@@ -25,6 +25,24 @@ Tested with Libby **9.5.0** (versionCode `950000`).
 ## Patches list
 
 <!-- PATCHES_START EXPANDED -->
+> **[v1.0.0](https://github.com/Tomveloper/libby-patches/releases/tag/v1.0.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+<details open>
+<summary>📦 Libby: Read Library Books&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 9.5.0 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Custom reading font](#custom-reading-font) | Renders book text with a font you upload in the reader. |  |
+| [Enable WebView debugging](#enable-webview-debugging) | Lets you inspect Libby's WebViews with chrome://inspect. |  |
+| [Shared web routes](#shared-web-routes) | Internal: installs one /morphe/ request router for extension patches. |  |
+
+</details>
+
 <!-- PATCHES_END -->
 
 ## Building locally
