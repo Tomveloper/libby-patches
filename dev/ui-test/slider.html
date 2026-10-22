@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>font slider test</title>
+<link rel="stylesheet" href="../../extensions/font/src/main/font-ui/section.css">
+<style>
+  body { width: 380px; margin: 16px; font-family: sans-serif; color: #222; }
+  .readability-dialog-sections { border: 1px solid #999; padding: 8px; }
+  #diag { white-space: pre-wrap; font: 11px/1.35 monospace; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="readability-dialog-sections"></div>
+<pre id="diag"></pre>
+<script>
+  // A tiny fake native bridge so controller.js can run in a plain browser.
+  var state = {
+    selected: 'a',
+    enabled: true,
+    fonts: [{
+      id: 'a',
+      name: 'Variable Test',
+      format: 'ttf',
+      size: 1234,
+      weight: 400,
+      weightMin: 100,
+      weightMax: 900,
+      italic: false,
+      url: '/morphe/font/a/0?v=1',
+      variants: [{
+        face: 0,
+        format: 'ttf',
+        size: 1234,
+        weight: 400,
+        weightMin: 100,
+        weightMax: 900,
+        italic: false,
+        auto: true,
+        url: '/morphe/font/a/0?v=1'
+      }]
+    }]
+  };
+
+  function stateJson() { return JSON.stringify(state); }
+  function faceOf(id) {
+    var font = state.fonts.filter(function (f) { return f.id === id; })[0];
+    return font ? font.variants[0] : null;
+  }
+
+  window.MORPHE_FONT_HTML = '';
+  window.MorpheFontBridge = {
+    getHtml: function () { return window.MORPHE_FONT_HTML; },
+    getCss: function () { return ''; },
+    setEnabled: function () { return stateJson(); },
+    selectFont: function () { return stateJson(); },
+    deleteFont: function () { return stateJson(); },
+    renameFont: function (id, name) {
+      state.fonts[0].name = name;
+      return stateJson();
+    },
+    setFace: function (id, face, weight, min, max, italic) {
+      var variant = faceOf(id);
+      variant.weightMin = min;
+      variant.weightMax = max;
+      variant.weight = min === max
+        ? min : Math.max(min, Math.min(max, weight));
+      variant.italic = !!italic;
+      variant.auto = false;
+      return stateJson();
+    },
+    detectFont: function () { return stateJson(); },
+    removeFace: function () { return stateJson(); },
+    mergeFont: function () { return stateJson(); },
+    pickFont: function () {},
+    pickVariant: function () {}
+  };
+
+  fetch('../../extensions/font/src/main/font-ui/section.html')
+    .then(function (response) { return response.text(); })
+    .then(function (html) {
+      window.MORPHE_FONT_HTML = html;
+      var script = document.createElement('script');
+      script.src = '../../extensions/font/src/main/font-ui/controller.js';
+      script.onload = start;
+      document.head.appendChild(script);
+    });
+
+  function diag(text) {
+    var pre = document.getElementById('diag');
+    pre.textContent += text + '\n';
+  }
+
+  function start() {
+    window.MorpheFont.init('', true, 'Variable Test', true, JSON.stringify(state));
+    setTimeout(function () {
+      var edit = document.querySelector('[data-font-edit]');
+      diag('edit button: ' + !!edit);
+      if (edit) {
+        edit.click();
+      }
+    }, 200);
+
+    setTimeout(function () {
+      var slider = document.querySelector('[data-weight-slider]');
+      diag('slider: ' + (slider ? slider.className : 'none'));
+      if (!slider) {
+        return;
+      }
+      diag('low=' + slider.getAttribute('data-low') +
+        ' high=' + slider.getAttribute('data-high'));
+      diag('slider rect: ' + JSON.stringify(slider.getBoundingClientRect()));
+      var fill = slider.querySelector('.morphe-weight-fill');
+      diag('fill left=' + fill.style.left + ' right=' + fill.style.right +
+        ' rect=' + JSON.stringify(fill.getBoundingClientRect()));
+      var handles = slider.querySelectorAll('[data-weight-handle]');
+      for (var i = 0; i < handles.length; i++) {
+        var handle = handles[i];
+        diag('handle ' + handle.getAttribute('data-weight-handle') +
+          ' left=' + handle.style.left +
+          ' rect=' + JSON.stringify(handle.getBoundingClientRect()));
+      }
+    }, 600);
+  }
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ import android.provider.OpenableColumns;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import app.libby.web.MorpheWebRouter;
 
@@ -74,24 +75,42 @@ public final class FontBridge {
                 }
 
                 JSONObject entry;
+                int face = 0;
                 synchronized (FontBridge.class) {
-                    entry = CURRENT.equals(path)
-                            ? selectedEntry(context)
-                            : findEntry(library(context), path);
+                    if (CURRENT.equals(path)) {
+                        entry = selectedEntry(context);
+                        if (entry != null) {
+                            face = Math.max(0, liveFace(context, entry));
+                        }
+                    } else {
+                        int slash = path.indexOf('/');
+                        String id = slash < 0 ? path : path.substring(0, slash);
+                        if (slash >= 0) {
+                            face = parseFace(path.substring(slash + 1));
+                        }
+                        entry = findEntry(library(context), id);
+                    }
                 }
                 if (entry == null) {
                     return null;
                 }
 
-                File file = resolve(context, entry.optString("file"));
+                JSONObject variant = variantOf(entry, face);
+                if (variant == null) {
+                    return null;
+                }
+                File file = resolve(context, variant.optString("file"));
                 if (file == null) {
                     return null;
                 }
 
-                return MorpheWebRouter.stream(file, mimeFor(entry.optString("format")));
+                return MorpheWebRouter.stream(
+                        file, mimeFor(variant.optString("format", "woff2")));
             };
 
     private static WeakReference<WebView> pendingWebView = new WeakReference<>(null);
+    // Null means a new font; otherwise the picked file becomes a face of this entry.
+    private static String pendingTargetId = null;
 
     private final WeakReference<WebView> webView;
 
@@ -135,7 +154,19 @@ public final class FontBridge {
 
     @JavascriptInterface
     public void pickFont() {
-        WebView view = webView.get();
+        openPicker(webView.get(), null);
+    }
+
+    /** Adds the picked file as another face of an existing family. */
+    @JavascriptInterface
+    public void pickVariant(String id) {
+        if (id == null || id.isEmpty()) {
+            return;
+        }
+        openPicker(webView.get(), id);
+    }
+
+    private static void openPicker(WebView view, String targetId) {
         if (view == null) {
             return;
         }
@@ -156,6 +187,7 @@ public final class FontBridge {
                 }
 
                 pendingWebView = new WeakReference<>(view);
+                pendingTargetId = targetId;
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("*/*");
@@ -234,9 +266,16 @@ public final class FontBridge {
                         continue;
                     }
                     if (id.equals(entry.optString("id"))) {
-                        File file = resolve(context, entry.optString("file"));
-                        if (file != null) {
-                            file.delete();
+                        JSONArray variants = variantsOf(entry);
+                        for (int j = 0; j < variants.length(); j++) {
+                            JSONObject variant = variants.optJSONObject(j);
+                            if (variant == null) {
+                                continue;
+                            }
+                            File file = resolve(context, variant.optString("file"));
+                            if (file != null) {
+                                file.delete();
+                            }
                         }
                         removed = true;
                         continue;
@@ -260,6 +299,272 @@ public final class FontBridge {
         return libraryStateJson(context);
     }
 
+    /** Renames a family; an empty name is ignored. Returns the updated library. */
+    @JavascriptInterface
+    public String renameFont(String id, String name) {
+        WebView view = webView.get();
+        if (view == null || id == null || id.isEmpty()) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        try {
+            String clean = cleanName(name);
+            if (!clean.isEmpty()) {
+                synchronized (FontBridge.class) {
+                    JSONArray stored = library(context);
+                    JSONObject entry = findEntry(stored, id);
+                    if (entry != null && !clean.equals(entry.optString("name"))) {
+                        entry.put("name", clean);
+                        prefs(context).edit()
+                                .putString(KEY_LIBRARY, stored.toString())
+                                .apply();
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "renameFont failed", t);
+        }
+        return libraryStateJson(context);
+    }
+
+    /**
+     * Stores the weight settings of one face. min == max means a static face; a
+     * wider range is a variable face. The weight is the default instance.
+     */
+    @JavascriptInterface
+    public String setFace(String id, int face, int weight, int weightMin,
+                          int weightMax, boolean italic) {
+        WebView view = webView.get();
+        if (view == null || id == null || id.isEmpty()) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        try {
+            synchronized (FontBridge.class) {
+                JSONArray stored = library(context);
+                JSONObject entry = findEntry(stored, id);
+                JSONObject variant = variantOf(entry, face);
+                if (variant != null) {
+                    int min = clampWeight(weightMin);
+                    int max = clampWeight(weightMax);
+                    if (min > max) {
+                        int swap = min;
+                        min = max;
+                        max = swap;
+                    }
+                    int value = min == max
+                            ? min
+                            : Math.max(min, Math.min(max, clampWeight(weight)));
+
+                    variant.put("weight", value);
+                    variant.put("weightMin", min);
+                    variant.put("weightMax", max);
+                    variant.put("italic", italic);
+                    variant.put("auto", false);
+                    prefs(context).edit()
+                            .putString(KEY_LIBRARY, stored.toString())
+                            .apply();
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "setFace failed", t);
+        }
+        return libraryStateJson(context);
+    }
+
+    /**
+     * Re-reads every face of a family. Faces that cannot be read (WOFF2, TTC)
+     * are left untouched and the UI is told through a toast.
+     */
+    @JavascriptInterface
+    public String detectFont(String id) {
+        WebView view = webView.get();
+        if (view == null || id == null || id.isEmpty()) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        String failed = "";
+        try {
+            synchronized (FontBridge.class) {
+                JSONArray stored = library(context);
+                JSONObject entry = findEntry(stored, id);
+                if (entry == null) {
+                    return libraryStateJson(context);
+                }
+
+                JSONArray variants = variantsOf(entry);
+                for (int i = 0; i < variants.length(); i++) {
+                    JSONObject variant = variants.optJSONObject(i);
+                    if (variant == null) {
+                        continue;
+                    }
+                    File file = resolve(context, variant.optString("file"));
+                    if (file == null) {
+                        continue;
+                    }
+
+                    FontFileMeta meta = FontFileMeta.read(file);
+                    if (!meta.ok) {
+                        failed = meta.reason;
+                        continue;
+                    }
+
+                    int min = clampWeight(meta.weightMin);
+                    int max = clampWeight(meta.weightMax);
+                    if (min > max) {
+                        int swap = min;
+                        min = max;
+                        max = swap;
+                    }
+                    int value = min == max
+                            ? min
+                            : Math.max(min, Math.min(max, clampWeight(meta.weight)));
+
+                    variant.put("weight", value);
+                    variant.put("weightMin", min);
+                    variant.put("weightMax", max);
+                    variant.put("italic", meta.italic);
+                    variant.put("auto", true);
+                }
+
+                entry.put("variants", variants);
+                prefs(context).edit()
+                        .putString(KEY_LIBRARY, stored.toString())
+                        .apply();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "detectFont failed", t);
+        }
+
+        if (!failed.isEmpty()) {
+            toast(view, "woff2".equals(failed)
+                    ? "WOFF2 weights can't be read. Set the range manually."
+                    : "Couldn't read this font's weight. Set it manually.");
+        }
+        return libraryStateJson(context);
+    }
+
+    /** Removes one face and its file. The last face cannot be removed. */
+    @JavascriptInterface
+    public String removeFace(String id, int face) {
+        WebView view = webView.get();
+        if (view == null || id == null || id.isEmpty()) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        File removed = null;
+        try {
+            synchronized (FontBridge.class) {
+                JSONArray stored = library(context);
+                JSONObject entry = findEntry(stored, id);
+                if (entry == null) {
+                    return libraryStateJson(context);
+                }
+                JSONArray variants = variantsOf(entry);
+                if (face < 0 || face >= variants.length()) {
+                    return libraryStateJson(context);
+                }
+
+                // Never remove the only usable face, even if dead entries from
+                // an older index are still around.
+                int live = 0;
+                for (int i = 0; i < variants.length(); i++) {
+                    JSONObject variant = variants.optJSONObject(i);
+                    if (variant != null
+                            && resolve(context, variant.optString("file")) != null) {
+                        live++;
+                    }
+                }
+                if (live <= 1) {
+                    return libraryStateJson(context);
+                }
+
+                JSONObject target = variants.optJSONObject(face);
+                if (target != null) {
+                    removed = resolve(context, target.optString("file"));
+                }
+
+                JSONArray next = new JSONArray();
+                for (int i = 0; i < variants.length(); i++) {
+                    JSONObject variant = variants.optJSONObject(i);
+                    if (i != face && variant != null) {
+                        next.put(variant);
+                    }
+                }
+                entry.put("variants", next);
+                // Face 0 may have changed, so bump the version and make the
+                // browser fetch the new first face instead of reusing the old.
+                entry.put("added", System.currentTimeMillis());
+                JSONObject first = next.optJSONObject(0);
+                if (first != null) {
+                    entry.put("file", first.optString("file"));
+                    entry.put("format", first.optString("format", "woff2"));
+                }
+
+                prefs(context).edit()
+                        .putString(KEY_LIBRARY, stored.toString())
+                        .apply();
+            }
+            if (removed != null) {
+                removed.delete();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "removeFace failed", t);
+        }
+        return libraryStateJson(context);
+    }
+
+    /** Moves every live face of the source family into the target family. */
+    @JavascriptInterface
+    public String mergeFont(String targetId, String sourceId) {
+        WebView view = webView.get();
+        if (view == null || targetId == null || sourceId == null
+                || targetId.isEmpty() || targetId.equals(sourceId)) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        try {
+            synchronized (FontBridge.class) {
+                JSONArray stored = library(context);
+                JSONObject target = findEntry(stored, targetId);
+                JSONObject source = findEntry(stored, sourceId);
+                if (target == null || source == null) {
+                    return libraryStateJson(context);
+                }
+
+                JSONArray merged = variantsOf(target);
+                JSONArray sourceVariants = variantsOf(source);
+                for (int i = 0; i < sourceVariants.length(); i++) {
+                    JSONObject variant = sourceVariants.optJSONObject(i);
+                    if (variant != null
+                            && resolve(context, variant.optString("file")) != null) {
+                        merged.put(variant);
+                    }
+                }
+                target.put("variants", merged);
+                target.put("added", System.currentTimeMillis());
+
+                JSONArray remaining = new JSONArray();
+                for (int i = 0; i < stored.length(); i++) {
+                    JSONObject entry = stored.optJSONObject(i);
+                    if (entry != null && !sourceId.equals(entry.optString("id"))) {
+                        remaining.put(entry);
+                    }
+                }
+
+                SharedPreferences.Editor editor = prefs(context).edit()
+                        .putString(KEY_LIBRARY, remaining.toString());
+                if (sourceId.equals(selectedId(context))) {
+                    editor.putString(KEY_SELECTED, targetId);
+                }
+                editor.apply();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "mergeFont failed", t);
+        }
+        return libraryStateJson(context);
+    }
+
     /**
      * Called from the patched Activity.onActivityResult.
      */
@@ -269,7 +574,9 @@ public final class FontBridge {
         }
 
         WebView view = pendingWebView.get();
+        String targetId = pendingTargetId;
         pendingWebView = new WeakReference<>(null);
+        pendingTargetId = null;
         if (view == null) {
             return;
         }
@@ -281,7 +588,7 @@ public final class FontBridge {
 
         Uri uri = data.getData();
         Context context = view.getContext().getApplicationContext();
-        new Thread(() -> handlePicked(view, context, uri), "MorpheFontPicker").start();
+        new Thread(() -> handlePicked(view, context, uri, targetId), "MorpheFontPicker").start();
     }
 
     public static boolean isEnabled(Context context) {
@@ -296,7 +603,11 @@ public final class FontBridge {
 
     public static String fontFormat(Context context) {
         JSONObject entry = selectedEntry(context);
-        return entry == null ? "woff2" : entry.optString("format", "woff2");
+        if (entry == null) {
+            return "woff2";
+        }
+        JSONObject variant = variantOf(entry, liveFace(context, entry));
+        return variant == null ? "woff2" : variant.optString("format", "woff2");
     }
 
     /**
@@ -309,9 +620,14 @@ public final class FontBridge {
         if (entry == null) {
             return "";
         }
-        File file = resolve(context, entry.optString("file"));
+        int face = liveFace(context, entry);
+        JSONObject variant = variantOf(entry, face);
+        if (variant == null) {
+            return "";
+        }
+        File file = resolve(context, variant.optString("file"));
         long version = entry.optLong("added", file != null ? file.lastModified() : 0L);
-        return urlFor(entry.optString("id"), version);
+        return urlFor(entry.optString("id"), face, version);
     }
 
     /**
@@ -321,7 +637,11 @@ public final class FontBridge {
      */
     public static File fontFile(Context context) {
         JSONObject entry = selectedEntry(context);
-        return entry == null ? null : resolve(context, entry.optString("file"));
+        if (entry == null) {
+            return null;
+        }
+        JSONObject variant = variantOf(entry, liveFace(context, entry));
+        return variant == null ? null : resolve(context, variant.optString("file"));
     }
 
     /**
@@ -341,20 +661,74 @@ public final class FontBridge {
                     if (entry == null) {
                         continue;
                     }
-                    File file = resolve(context, entry.optString("file"));
-                    if (file == null) {
-                        // Index entry whose file disappeared; hide it.
+                    String id = entry.optString("id");
+                    JSONArray storedVariants = variantsOf(entry);
+                    JSONArray liveVariants = new JSONArray();
+                    long totalSize = 0;
+                    long added = entry.optLong("added", 0L);
+                    String firstUrl = "";
+                    JSONObject first = null;
+
+                    for (int j = 0; j < storedVariants.length(); j++) {
+                        JSONObject variant = storedVariants.optJSONObject(j);
+                        if (variant == null) {
+                            continue;
+                        }
+                        File file = resolve(context, variant.optString("file"));
+                        if (file == null) {
+                            // A face whose file disappeared is hidden; the others
+                            // in the same family stay usable.
+                            continue;
+                        }
+
+                        int weight = clampWeight(variant.optInt("weight", 400));
+                        int min = clampWeight(variant.optInt("weightMin", weight));
+                        int max = clampWeight(variant.optInt("weightMax", weight));
+                        if (min > max) {
+                            int swap = min;
+                            min = max;
+                            max = swap;
+                        }
+                        weight = Math.max(min, Math.min(max, weight));
+
+                        JSONObject item = new JSONObject();
+                        item.put("url", urlFor(
+                                id, j, added > 0 ? added : file.lastModified()));
+                        item.put("face", j);
+                        item.put("format", variant.optString("format",
+                                formatFromName(variant.optString("file"))));
+                        item.put("size", file.length());
+                        item.put("weight", weight);
+                        item.put("weightMin", min);
+                        item.put("weightMax", max);
+                        item.put("italic", variant.optBoolean("italic", false));
+                        item.put("auto", variant.optBoolean("auto", false));
+                        liveVariants.put(item);
+
+                        totalSize += file.length();
+                        if (first == null) {
+                            first = item;
+                            firstUrl = item.getString("url");
+                        }
+                    }
+
+                    if (first == null) {
+                        // No file is left; hide the row rather than offer a font
+                        // that cannot be applied.
                         continue;
                     }
 
-                    String id = entry.optString("id");
                     JSONObject item = new JSONObject();
                     item.put("id", id);
                     item.put("name", entry.optString("name", "Custom font"));
-                    item.put("format", entry.optString("format", "woff2"));
-                    item.put("size", file.length());
-                    item.put("url", urlFor(
-                            id, entry.optLong("added", file.lastModified())));
+                    item.put("format", first.optString("format", "woff2"));
+                    item.put("size", totalSize);
+                    item.put("url", firstUrl);
+                    item.put("weight", first.optInt("weight", 400));
+                    item.put("weightMin", first.optInt("weightMin", 400));
+                    item.put("weightMax", first.optInt("weightMax", 400));
+                    item.put("italic", first.optBoolean("italic", false));
+                    item.put("variants", liveVariants);
                     items.put(item);
 
                     if (id.equals(selected)) {
@@ -375,11 +749,12 @@ public final class FontBridge {
         }
     }
 
-    private static String urlFor(String id, long version) {
-        return "/morphe/" + FONT_ROUTE + "/" + id + "?v=" + version;
+    private static String urlFor(String id, int face, long version) {
+        return "/morphe/" + FONT_ROUTE + "/" + id + "/" + face + "?v=" + version;
     }
 
-    private static void handlePicked(WebView view, Context context, Uri uri) {
+    private static void handlePicked(WebView view, Context context, Uri uri,
+                                     String targetId) {
         File dir = new File(context.getFilesDir(), FONT_DIR);
         File temp = null;
 
@@ -426,30 +801,74 @@ public final class FontBridge {
             }
             temp = null;
 
+            // The file is complete now, so metadata can be read safely. WOFF2
+            // and collections report ok == false; they keep the manual default.
+            FontFileMeta meta = FontFileMeta.read(font);
+            int weight = meta.ok ? meta.weight : 400;
+            int min = meta.ok ? meta.weightMin : weight;
+            int max = meta.ok ? meta.weightMax : weight;
+            if (min > max) {
+                int swap = min;
+                min = max;
+                max = swap;
+            }
+            weight = Math.max(min, Math.min(max, weight));
+
+            JSONObject variant = new JSONObject();
+            variant.put("file", font.getName());
+            variant.put("format", format);
+            variant.put("weight", weight);
+            variant.put("weightMin", min);
+            variant.put("weightMax", max);
+            variant.put("italic", meta.ok && meta.italic);
+            variant.put("auto", meta.ok);
+
             String name = displayName(context, uri);
             long added = System.currentTimeMillis();
 
             synchronized (FontBridge.class) {
                 JSONArray stored = library(context);
-                JSONObject entry = new JSONObject();
-                entry.put("id", id);
-                entry.put("name", name);
-                entry.put("file", font.getName());
-                entry.put("format", format);
-                entry.put("added", added);
-                stored.put(entry);
+                if (targetId != null) {
+                    JSONObject entry = findEntry(stored, targetId);
+                    if (entry == null) {
+                        font.delete();
+                        notifyError(view, "That font is no longer available");
+                        return;
+                    }
+                    JSONArray variants = variantsOf(entry);
+                    variants.put(variant);
+                    entry.put("variants", variants);
+                    prefs(context).edit()
+                            .putString(KEY_LIBRARY, stored.toString())
+                            .apply();
+                } else {
+                    JSONObject entry = new JSONObject();
+                    entry.put("id", id);
+                    entry.put("name", name);
+                    entry.put("file", font.getName());
+                    entry.put("format", format);
+                    entry.put("added", added);
+                    entry.put("variants", new JSONArray().put(variant));
+                    stored.put(entry);
 
-                prefs(context).edit()
-                        .putBoolean(KEY_ENABLED, true)
-                        .putString(KEY_SELECTED, id)
-                        .putString(KEY_LIBRARY, stored.toString())
-                        .apply();
+                    prefs(context).edit()
+                            .putBoolean(KEY_ENABLED, true)
+                            .putString(KEY_SELECTED, id)
+                            .putString(KEY_LIBRARY, stored.toString())
+                            .apply();
+                }
             }
 
             cleanupUploads(dir);
 
             notifyJs(view, "if(window.MorpheFont){MorpheFont.onLibraryChanged("
                     + JSONObject.quote(libraryStateJson(context)) + ");}");
+
+            if (!meta.ok) {
+                toast(view, "woff2".equals(meta.reason)
+                        ? "WOFF2 weights can't be read. Added as Regular (400)."
+                        : "Couldn't read this font's weight. Added as Regular (400).");
+            }
         } catch (Exception e) {
             Log.e(TAG, "handlePicked failed", e);
             notifyError(view, "Could not read the font");
@@ -562,11 +981,23 @@ public final class FontBridge {
         return file.isFile() && file.length() > 0 ? file : null;
     }
 
-    private static JSONArray library(Context context) {
+    private static synchronized JSONArray library(Context context) {
         String raw = prefs(context).getString(KEY_LIBRARY, "");
         if (raw != null && !raw.isEmpty()) {
             try {
-                return new JSONArray(raw);
+                JSONArray array = new JSONArray(raw);
+                boolean changed = false;
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject entry = array.optJSONObject(i);
+                    if (entry != null && !entry.has("variants")) {
+                        entry.put("variants", legacyVariants(entry));
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    prefs(context).edit().putString(KEY_LIBRARY, array.toString()).apply();
+                }
+                return array;
             } catch (JSONException ignored) {
                 // Corrupt index: fall through and rebuild it from scratch.
             }
@@ -605,7 +1036,8 @@ public final class FontBridge {
             entry.put("name", prefs.getString(KEY_LEGACY_NAME, "Custom font"));
             entry.put("file", file);
             entry.put("format", prefs.getString(KEY_LEGACY_FORMAT, formatFromName(file)));
-            entry.put("added", legacyVersion(prefs, file));
+            entry.put("added", legacyVersion(prefs));
+            entry.put("variants", legacyVariants(entry));
             result.put(entry);
 
             prefs.edit()
@@ -622,7 +1054,7 @@ public final class FontBridge {
         return result;
     }
 
-    private static long legacyVersion(SharedPreferences prefs, String file) {
+    private static long legacyVersion(SharedPreferences prefs) {
         String raw = prefs.getString(KEY_LEGACY_VERSION, "");
         try {
             if (raw != null && !raw.isEmpty()) {
@@ -658,9 +1090,7 @@ public final class FontBridge {
 
     private static JSONObject selectedEntry(Context context) {
         JSONObject entry = findEntry(library(context), selectedId(context));
-        return entry != null && resolve(context, entry.optString("file")) != null
-                ? entry
-                : null;
+        return entry != null && liveFace(context, entry) >= 0 ? entry : null;
     }
 
     private static JSONObject findEntry(JSONArray library, String id) {
@@ -676,9 +1106,90 @@ public final class FontBridge {
         return null;
     }
 
+    /**
+     * Index of the first face whose file still exists, or -1. A family is
+     * considered usable as long as one of its faces is present.
+     */
+    private static int liveFace(Context context, JSONObject entry) {
+        JSONArray variants = variantsOf(entry);
+        for (int i = 0; i < variants.length(); i++) {
+            JSONObject variant = variants.optJSONObject(i);
+            if (variant != null && resolve(context, variant.optString("file")) != null) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static JSONObject variantOf(JSONObject entry, int face) {
+        if (entry == null || face < 0) {
+            return null;
+        }
+        return variantsOf(entry).optJSONObject(face);
+    }
+
+    /** Faces of an entry, including the synthesized one for pre-variant data. */
+    private static JSONArray variantsOf(JSONObject entry) {
+        JSONArray variants = entry == null ? null : entry.optJSONArray("variants");
+        return variants != null && variants.length() > 0
+                ? variants
+                : legacyVariants(entry);
+    }
+
+    /**
+     * Builds the single face described by the entry's pre-variant fields. New
+     * entries and merged families always carry a variants array; this is only
+     * used for data written by an older build.
+     */
+    private static JSONArray legacyVariants(JSONObject entry) {
+        JSONArray variants = new JSONArray();
+        if (entry == null) {
+            return variants;
+        }
+        try {
+            int weight = clampWeight(entry.optInt("weight", 400));
+            JSONObject variant = new JSONObject();
+            variant.put("file", entry.optString("file"));
+            variant.put("format", entry.optString("format",
+                    formatFromName(entry.optString("file"))));
+            variant.put("weight", weight);
+            variant.put("weightMin", clampWeight(entry.optInt("weightMin", weight)));
+            variant.put("weightMax", clampWeight(entry.optInt("weightMax", weight)));
+            variant.put("italic", entry.optBoolean("italic", false));
+            variant.put("auto", entry.optBoolean("auto", false));
+            variants.put(variant);
+        } catch (JSONException ignored) {
+            // An empty list hides the entry; better than crashing the UI.
+        }
+        return variants;
+    }
+
+    private static int clampWeight(int weight) {
+        return Math.max(1, Math.min(1000, weight));
+    }
+
+    private static int parseFace(String value) {
+        try {
+            return Math.max(0, Integer.parseInt(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
     private static String newId() {
         return Long.toString(System.currentTimeMillis(), 36)
                 + "-" + Long.toString(System.nanoTime() & 0xFFFFFF, 36);
+    }
+
+    private static String cleanName(String name) {
+        if (name == null) {
+            return "";
+        }
+        String clean = name.replaceAll("\\s+", " ").trim();
+        if (clean.length() > 80) {
+            clean = clean.substring(0, 80).trim();
+        }
+        return clean;
     }
 
     private static String displayName(Context context, Uri uri) {
@@ -735,5 +1246,19 @@ public final class FontBridge {
             return;
         }
         view.post(() -> view.evaluateJavascript(script, null));
+    }
+
+    /** Shows a toast on the UI thread; safe to call from the picker thread. */
+    private static void toast(WebView view, String message) {
+        if (view == null) {
+            return;
+        }
+        view.post(() -> {
+            try {
+                Toast.makeText(view.getContext(), message, Toast.LENGTH_LONG).show();
+            } catch (Throwable ignored) {
+                // A toast is best effort and must never break the upload.
+            }
+        });
     }
 }
