@@ -407,7 +407,60 @@ a log. Capture the full output or use `Select-String` for the error line.
 
 ---
 
-## 12. Glossary
+## 12. Commit messages and releases
+
+Releases are automated with **semantic-release**. `.releaserc` reads commit
+headers, so the type you pick decides whether a release happens and how the
+version moves. There is no commit linter: a wrong type silently produces the
+wrong version instead of failing.
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
+type(scope): lowercase imperative summary
+```
+
+- `type` is required and lowercase; `scope` is optional and lowercase.
+- Keep the header under ~72 characters and explain the why in the body.
+- One logical change per commit.
+- The only scope the release rules match is `Needs bump`, and only with
+  `build`.
+
+| Type | Release | Changelog section | Use for |
+|---|---|---|---|
+| `feat` | minor | ✨ New Features | New user-visible behavior |
+| `fix` | patch | 🐛 Bug Fixes | Incorrect behavior |
+| `perf` | patch | 🔧 Improvements | Performance or battery work |
+| `bump` | patch | 🚀 Updated App Support | Adding or updating an app version in `Constants.kt` |
+| `build` | none | hidden | Build tooling; `build(Needs bump): ...` is a patch |
+| `docs` | none | — | Documentation |
+| `chore` | none | — | Housekeeping, dependencies, releases |
+| `refactor` | none | — | No behavior change |
+| `test` | none | — | Tests |
+
+- `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer still forces a major
+  release. Do not use it for internal rewrites.
+- Non-releasing commits still run the compile check, but publish no bundle.
+
+Do not hand-edit release outputs: `CHANGELOG.md`, `gradle.properties`,
+`patches-bundle.json`, `patches-list.json`, or the generated table in
+`README.md`. semantic-release writes them in a
+`chore: Release vX.Y.Z [skip ci]` commit; keep `[skip ci]` so that commit does
+not start another run.
+
+Flow:
+
+1. Commit on `dev` with a conventional message.
+2. A push to `dev` opens or updates the automated `dev` → `main` PR
+   (`chore: Merge branch dev to main`).
+3. Merging to `main` runs `.github/workflows/release.yml`: semantic-release
+   derives the version from the commits since the last tag, publishes the
+   bundle, updates the release outputs above, then backmerges `main` into
+   `dev`.
+
+---
+
+## 13. Glossary
 
 - **APK** — Android app package (a zip with DEX code, resources, manifest, signature).
 - **DEX** — Android bytecode format, executed by ART.

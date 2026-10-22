@@ -35,6 +35,9 @@ public final class FontHook {
         String fontUrl = FontBridge.fontUrl(context);
         boolean hasFont = !fontUrl.isEmpty();
         String format = FontBridge.fontFormat(context);
+        // The whole library travels with init so the UI can draw the font list
+        // without a second bridge call, and so a deleted font cannot linger.
+        String library = FontBridge.libraryStateJson(context);
 
         // HTML and CSS are fetched from FontBridge at runtime. Keeping them out
         // of this script avoids embedding markup in the injected JavaScript and
@@ -45,7 +48,8 @@ public final class FontHook {
                 + JSONObject.quote(hasFont ? fontCss(fontUrl, format) : "") + ","
                 + (hasFont && FontBridge.isEnabled(context)) + ","
                 + JSONObject.quote(hasFont ? FontBridge.fontName(context) : "") + ","
-                + hasFont + ");";
+                + hasFont + ","
+                + JSONObject.quote(library) + ");";
         webView.evaluateJavascript(script + init, null);
     }
 

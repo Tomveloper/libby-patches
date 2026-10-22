@@ -14,6 +14,10 @@
   var hasFont = false;
   var fontName = '';
   var statusText = 'No font selected';
+  var fonts = [];
+  var selectedId = '';
+  var searchQuery = '';
+  var pendingDelete = '';
   var eventsWired = false;
   var injectScheduled = false;
 
@@ -211,6 +215,250 @@
       "font-weight:400;font-style:normal}" + FONT_RULE;
   }
 
+  function parseState(json) {
+    if (!json) {
+      return null;
+    }
+    try {
+      var state = typeof json === 'string' ? JSON.parse(json) : json;
+      return state && typeof state === 'object' ? state : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function normalizeFonts(list) {
+    var out = [];
+    if (!list || !list.length) {
+      return out;
+    }
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      if (!item || !item.id) {
+        continue;
+      }
+      out.push({
+        id: String(item.id),
+        name: String(item.name || 'Custom font'),
+        format: String(item.format || ''),
+        size: typeof item.size === 'number' ? item.size : 0,
+        url: String(item.url || '')
+      });
+    }
+    return out;
+  }
+
+  function findFont(id) {
+    if (!id) {
+      return null;
+    }
+    for (var i = 0; i < fonts.length; i++) {
+      if (fonts[i].id === id) {
+        return fonts[i];
+      }
+    }
+    return null;
+  }
+
+  // Replaces the whole UI state from one bridge payload. Called on init, after
+  // an upload, and after selecting or deleting a font.
+  function applyState(state) {
+    if (!state) {
+      return false;
+    }
+    fonts = normalizeFonts(state.fonts);
+    selectedId = state.selected ? String(state.selected) : '';
+
+    var selected = findFont(selectedId);
+    if (!selected) {
+      selectedId = '';
+    }
+    hasFont = !!selected;
+    enabled = hasFont && !!state.enabled;
+    fontName = selected ? selected.name : '';
+    // A font without a URL only happens in the console-based dev injection;
+    // keep the CSS it was started with.
+    if (selected && selected.url) {
+      fontCss = fontCssFromUrl(selected.url, selected.format);
+    } else if (!selected) {
+      fontCss = '';
+    }
+    statusText = baseStatus();
+    return true;
+  }
+
+  function formatSize(bytes) {
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes;
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value = value / 1024;
+      unit++;
+    }
+    return (unit === 0 ? String(Math.round(value)) : value.toFixed(1)) +
+      ' ' + units[unit];
+  }
+
+  function metaFor(font) {
+    var parts = [];
+    if (font.format) {
+      parts.push(font.format.toUpperCase());
+    }
+    if (font.size > 0) {
+      parts.push(formatSize(font.size));
+    }
+    return parts.join(' \u00b7 ');
+  }
+
+  function visibleFonts() {
+    var query = searchQuery.toLowerCase();
+    if (!query) {
+      return fonts;
+    }
+    var out = [];
+    for (var i = 0; i < fonts.length; i++) {
+      if (fonts[i].name.toLowerCase().indexOf(query) >= 0) {
+        out.push(fonts[i]);
+      }
+    }
+    return out;
+  }
+
+  function choiceRow(doc, font) {
+    var row = doc.createElement('div');
+    row.className = 'morphe-font-row' + (font.id === selectedId ? ' is-selected' : '');
+
+    var choice = doc.createElement('button');
+    choice.type = 'button';
+    choice.className = 'morphe-font-choice';
+    choice.setAttribute('data-font-select', font.id);
+    choice.setAttribute('aria-pressed', font.id === selectedId ? 'true' : 'false');
+
+    var name = doc.createElement('span');
+    name.className = 'morphe-font-choice-name';
+    name.textContent = font.name;
+
+    var meta = doc.createElement('span');
+    meta.className = 'morphe-font-choice-meta';
+    meta.textContent = metaFor(font);
+
+    choice.appendChild(name);
+    choice.appendChild(meta);
+
+    var remove = doc.createElement('button');
+    remove.type = 'button';
+    remove.className = 'morphe-font-delete';
+    remove.setAttribute('data-font-delete', font.id);
+    remove.setAttribute('aria-label', 'Delete ' + font.name);
+    remove.textContent = 'Delete';
+
+    row.appendChild(choice);
+    row.appendChild(remove);
+    return row;
+  }
+
+  // Libby's WebChromeClient cannot be relied on to show window.confirm(), so the
+  // confirmation replaces the row itself. No overlay and no blocking dialog.
+  function confirmRow(doc, font) {
+    var row = doc.createElement('div');
+    row.className = 'morphe-font-row is-confirming';
+
+    var text = doc.createElement('span');
+    text.className = 'morphe-font-confirm-text';
+    text.textContent = font.id === selectedId
+      ? 'Delete "' + font.name + '"? The custom font turns off and the app font returns.'
+      : 'Delete "' + font.name + '"?';
+
+    var yes = doc.createElement('button');
+    yes.type = 'button';
+    yes.className = 'morphe-font-confirm';
+    yes.setAttribute('data-font-delete-confirm', font.id);
+    yes.textContent = 'Delete';
+
+    var no = doc.createElement('button');
+    no.type = 'button';
+    no.className = 'morphe-font-cancel';
+    no.setAttribute('data-font-delete-cancel', '1');
+    no.textContent = 'Cancel';
+
+    row.appendChild(text);
+    row.appendChild(yes);
+    row.appendChild(no);
+    return row;
+  }
+
+  function renderList(section) {
+    if (!section) {
+      return;
+    }
+    var list = section.querySelector('#morphe-font-list');
+    if (!list) {
+      return;
+    }
+    var search = section.querySelector('#morphe-font-search');
+    var empty = section.querySelector('#morphe-font-empty');
+
+    // A search box is only useful with more than one font. Clear the query when
+    // the library shrinks so the list cannot stay filtered by a hidden box.
+    if (fonts.length <= 1) {
+      searchQuery = '';
+    }
+    if (search) {
+      if (search.value !== searchQuery) {
+        search.value = searchQuery;
+      }
+      if (search.hidden !== (fonts.length <= 1)) {
+        search.hidden = fonts.length <= 1;
+      }
+    }
+
+    var items = visibleFonts();
+    var signature = [fonts.length, selectedId, pendingDelete, searchQuery]
+      .join('\u0001');
+    for (var i = 0; i < items.length; i++) {
+      var font = items[i];
+      signature += '\u0002' + font.id + '\u0001' + font.name + '\u0001' +
+        font.format + '\u0001' + font.size;
+    }
+
+    // Rebuild only when something visible changed. The signature lives on the
+    // list element, so a freshly injected section always renders.
+    if (list.getAttribute('data-morphe-font-signature') !== signature) {
+      var doc = section.ownerDocument;
+      var frag = doc.createDocumentFragment();
+      for (var j = 0; j < items.length; j++) {
+        frag.appendChild(items[j].id === pendingDelete
+          ? confirmRow(doc, items[j])
+          : choiceRow(doc, items[j]));
+      }
+      list.textContent = '';
+      list.appendChild(frag);
+      list.setAttribute('data-morphe-font-signature', signature);
+    }
+
+    if (empty) {
+      var text = !fonts.length
+        ? 'No fonts uploaded yet.'
+        : (items.length ? '' : 'No font matches "' + searchQuery + '".');
+      if (empty.textContent !== text) {
+        empty.textContent = text;
+      }
+      if (empty.hidden !== !text) {
+        empty.hidden = !text;
+      }
+    }
+  }
+
+  function syncSection() {
+    var section = topDocument().getElementById(SECTION_ID);
+    if (section) {
+      setSwitch(section, enabled);
+      setStatus(section, statusText);
+      renderList(section);
+    }
+    apply();
+  }
+
   function pickFont() {
     var section = topDocument().getElementById(SECTION_ID);
     try {
@@ -227,6 +475,48 @@
     }
   }
 
+  function chooseFont(id) {
+    if (!id || (id === selectedId && enabled)) {
+      return;
+    }
+    var section = topDocument().getElementById(SECTION_ID);
+    var state = null;
+    try {
+      var b = bridge();
+      if (b && typeof b.selectFont === 'function') {
+        state = parseState(b.selectFont(id));
+      }
+    } catch (e) {
+      state = null;
+    }
+    if (!state || !applyState(state)) {
+      setStatus(section, 'Could not select the font');
+      return;
+    }
+    pendingDelete = '';
+    syncSection();
+  }
+
+  function removeFont(id) {
+    var section = topDocument().getElementById(SECTION_ID);
+    var state = null;
+    try {
+      var b = bridge();
+      if (b && typeof b.deleteFont === 'function') {
+        state = parseState(b.deleteFont(id));
+      }
+    } catch (e) {
+      state = null;
+    }
+    pendingDelete = '';
+    if (!state || !applyState(state)) {
+      setStatus(section, 'Could not delete the font');
+      renderList(section);
+      return;
+    }
+    syncSection();
+  }
+
   function onDocumentClick(event) {
     var target = event.target;
     if (!target || !target.closest) {
@@ -236,6 +526,32 @@
       pickFont();
       return;
     }
+
+    var choose = target.closest('[data-font-select]');
+    if (choose) {
+      chooseFont(choose.getAttribute('data-font-select'));
+      return;
+    }
+
+    var askDelete = target.closest('[data-font-delete]');
+    if (askDelete) {
+      pendingDelete = askDelete.getAttribute('data-font-delete');
+      renderList(topDocument().getElementById(SECTION_ID));
+      return;
+    }
+
+    var confirmDelete = target.closest('[data-font-delete-confirm]');
+    if (confirmDelete) {
+      removeFont(confirmDelete.getAttribute('data-font-delete-confirm'));
+      return;
+    }
+
+    if (target.closest('[data-font-delete-cancel]')) {
+      pendingDelete = '';
+      renderList(topDocument().getElementById(SECTION_ID));
+      return;
+    }
+
     var button = target.closest('button.nav-action-item-button.halo');
     if (button && isAppearanceButton(button)) {
       scheduleInject();
@@ -261,6 +577,14 @@
     }
   }
 
+  function onDocumentInput(event) {
+    var target = event.target;
+    if (target && target.id === 'morphe-font-search') {
+      searchQuery = (target.value || '').trim();
+      renderList(topDocument().getElementById(SECTION_ID));
+    }
+  }
+
   function wireEvents(doc) {
     if (eventsWired) {
       return;
@@ -270,6 +594,7 @@
     // still sees them. Delegation also survives the dialog being re-rendered.
     doc.addEventListener('click', onDocumentClick, true);
     doc.addEventListener('change', onDocumentChange, true);
+    doc.addEventListener('input', onDocumentInput, true);
     // load does not bubble, but the capture phase still reaches the document.
     doc.addEventListener('load', onFrameLoad, true);
   }
@@ -307,6 +632,10 @@
     }
 
     if (created) {
+      // The dialog is rebuilt from scratch each time it opens, so drop the
+      // transient filter and confirmation with it.
+      searchQuery = '';
+      pendingDelete = '';
       refreshHelper(doc);
       setTimeout(function () {
         refreshHelper(doc);
@@ -315,11 +644,12 @@
 
     setSwitch(section, enabled);
     setStatus(section, statusText);
+    renderList(section);
     wireEvents(doc);
   }
 
   window.MorpheFont = {
-    init: function (css, isEnabled, name, hasFontValue) {
+    init: function (css, isEnabled, name, hasFontValue, libraryJson) {
       if (typeof css === 'string') {
         fontCss = css;
       }
@@ -327,6 +657,10 @@
       enabled = hasFont && !!isEnabled;
       fontName = name || '';
       statusText = baseStatus();
+      var state = parseState(libraryJson);
+      if (state) {
+        applyState(state);
+      }
       var doc = topDocument();
       wireEvents(doc);
       inject();
@@ -342,23 +676,14 @@
       apply();
     },
 
-    onFontPicked: function (name, url, format) {
-      if (!url) {
-        this.onFontError('Could not save the font');
+    // Called after an upload or by any native change to the font library.
+    onLibraryChanged: function (json) {
+      var state = parseState(json);
+      if (!state || !applyState(state)) {
         return;
       }
-      fontCss = fontCssFromUrl(url, format);
-      fontName = name || 'Custom font';
-      hasFont = true;
-      enabled = true;
-      var section = topDocument().getElementById(SECTION_ID);
-      if (section) {
-        setSwitch(section, true);
-        setStatus(section, fontName);
-      } else {
-        statusText = fontName;
-      }
-      apply();
+      pendingDelete = '';
+      syncSection();
     },
 
     onFontError: function (message) {

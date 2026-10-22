@@ -1,12 +1,225 @@
-#morphe-font-settings .morphe-font-actions {
-  display: flex;
+#morphe-font-settings .morphe-font-header {
+  display: flex !important;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  position: relative;
+  margin: 12px 0 10px;
 }
 
-#morphe-font-settings #morphe-font-status {
+#morphe-font-settings .morphe-font-current {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#morphe-font-settings .morphe-font-current-label {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  user-select: none;
+}
+
+#morphe-font-settings .morphe-font-current-name {
+  display: block;
   margin: 0;
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Libby positions its own dialog buttons absolutely; the class is dropped, but
+   force static flow too so the header always lays out side by side.
+   Colors come from currentColor so the button follows the reader theme:
+   the app draws its own borders the same way (85% foreground in dark mode). */
+#morphe-font-settings #morphe-font-upload {
+  position: static !important;
+  inset: auto !important;
+  float: none !important;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto !important;
+  min-height: 38px;
+  margin: 0 !important;
+  padding: 0 16px;
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.18);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 2px color-mix(in srgb, currentColor 22%, transparent);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#morphe-font-settings #morphe-font-upload::before {
+  content: '+';
+  font-size: 1.3em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#morphe-font-settings #morphe-font-upload:active {
+  background: rgba(128, 128, 128, 0.32);
+  background: color-mix(in srgb, currentColor 24%, transparent);
+  box-shadow: none;
+}
+
+#morphe-font-settings #morphe-font-upload:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+#morphe-font-settings .morphe-font-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-color: color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+#morphe-font-settings .morphe-font-search[hidden],
+#morphe-font-settings #morphe-font-empty[hidden] {
+  display: none;
+}
+
+#morphe-font-settings .morphe-font-list {
+  max-height: 220px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid currentColor;
+}
+
+/* A styled scrollbar stays visible in Chromium, unlike the overlay scrollbar,
+   so the list reads as scrollable even before the first swipe. */
+#morphe-font-settings .morphe-font-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+#morphe-font-settings .morphe-font-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#morphe-font-settings .morphe-font-list::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: currentColor;
+}
+
+#morphe-font-settings .morphe-font-list:empty {
+  display: none;
+}
+
+#morphe-font-settings .morphe-font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(128, 128, 128, 0.35);
+  border-top-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+#morphe-font-settings .morphe-font-row:first-child {
+  border-top: 0;
+}
+
+#morphe-font-settings .morphe-font-choice {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#morphe-font-settings .morphe-font-choice-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#morphe-font-settings .morphe-font-row.is-selected .morphe-font-choice-name {
+  font-weight: 700;
+}
+
+#morphe-font-settings .morphe-font-choice-meta {
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+#morphe-font-settings .morphe-font-delete,
+#morphe-font-settings .morphe-font-confirm,
+#morphe-font-settings .morphe-font-cancel {
+  flex: 0 0 auto;
+  padding: 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+#morphe-font-settings .morphe-font-delete {
+  font-size: 0.85em;
+  opacity: 0.6;
+  text-decoration: underline;
+}
+
+#morphe-font-settings .morphe-font-row.is-confirming {
+  flex-wrap: wrap;
+  padding: 10px 2px;
+}
+
+#morphe-font-settings .morphe-font-confirm-text {
+  flex: 1 1 100%;
+  font-size: 0.9em;
+}
+
+#morphe-font-settings .morphe-font-confirm {
+  font-weight: 700;
+  color: #b3261e;
+  color: var(--c-hsla-danger, #b3261e);
+}
+
+#morphe-font-settings .morphe-font-cancel {
+  opacity: 0.7;
+}
+
+#morphe-font-settings .morphe-font-choice:focus-visible,
+#morphe-font-settings .morphe-font-delete:focus-visible,
+#morphe-font-settings .morphe-font-confirm:focus-visible,
+#morphe-font-settings .morphe-font-cancel:focus-visible,
+#morphe-font-settings .morphe-font-search:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 #morphe-font-settings #morphe-font-enabled:disabled + .shibui-form-switch-face {
