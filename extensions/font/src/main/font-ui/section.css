@@ -1,0 +1,14 @@
+#morphe-font-settings .morphe-font-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#morphe-font-settings #morphe-font-status {
+  margin: 0;
+}
+
+#morphe-font-settings #morphe-font-enabled:disabled + .shibui-form-switch-face {
+  opacity: 0.5;
+}

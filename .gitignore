@@ -128,3 +128,23 @@ node_modules/
 # Ignore IDEA files
 .idea/
 local.properties
+
+# Kotlin build cache
+.kotlin/
+
+# Generated font UI dev bundle
+dev/dist/
+
+# Captured patch logs
+patch-log*.txt
+
+# Secrets and signing material
+.env
+.env.*
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+*.aab
