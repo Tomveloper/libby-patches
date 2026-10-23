@@ -2,6 +2,8 @@
   'use strict';
 
   var SECTION_ID = 'morphe-font-settings';
+  var OVERLAY_ID = 'morphe-font-overlay';
+  var NAV_ID = 'morphe-font-nav-item';
   var SECTION_FLAG = 'data-morphe-font-ui';
   var ADD_DIALOG_ID = 'morphe-font-add-dialog';
   var ROOT_FLAG = 'data-morphe-font-root';
@@ -22,7 +24,6 @@
   var addDialog = '';
   var addQuery = '';
   var eventsWired = false;
-  var injectScheduled = false;
 
   var PEN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
     '<path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>' +
@@ -104,6 +105,9 @@
     if (!target || target.tagName !== 'IFRAME') {
       return;
     }
+    // Chapter changes are a cheap, natural checkpoint: if the reader rebuilt
+    // its nav bar, put our item back.
+    ensureNavButton(topDocument());
     var child = null;
     try {
       child = target.contentDocument;
@@ -115,23 +119,116 @@
     }
   }
 
-  function isAppearanceButton(button) {
-    var label = button && button.querySelector('.nav-action-item-label');
-    return !!label && label.textContent.trim() === 'Appearance';
-  }
-
-  // Libby stops the Appearance click before it bubbles, so use the capture
-  // phase. The dialog is created after the event, so defer one task instead of
-  // polling. Multiple taps collapse into one pending injection.
-  function scheduleInject() {
-    if (injectScheduled) {
+  // The navigation bar is Libby's, so clone the Appearance item to inherit its
+  // size, spacing and halo behavior. The clone gets our own label and click
+  // handling; it opens the font sheet instead of the Appearance dialog.
+  function ensureNavButton(doc) {
+    if (!doc.body || doc.getElementById(NAV_ID)) {
       return;
     }
-    injectScheduled = true;
-    setTimeout(function () {
-      injectScheduled = false;
-      inject();
-    }, 0);
+    var labels = doc.querySelectorAll('.nav-action-item-label');
+    var appearance = null;
+    for (var i = 0; i < labels.length; i++) {
+      if (labels[i].textContent.trim() === 'Appearance') {
+        appearance = labels[i];
+        break;
+      }
+    }
+    var item = appearance && appearance.closest
+      ? appearance.closest('.nav-action-item')
+      : null;
+    if (!item || !item.parentNode) {
+      return;
+    }
+    var clone = item.cloneNode(true);
+    clone.id = NAV_ID;
+    clone.removeAttribute('aria-hidden');
+    var button = clone.querySelector('button');
+    var label = clone.querySelector('.nav-action-item-label');
+    if (!button || !label) {
+      return;
+    }
+    label.id = 'morphe-font-nav-label';
+    label.removeAttribute('aria-hidden');
+    label.textContent = 'Fonts';
+    button.removeAttribute('disabled');
+    button.removeAttribute('aria-hidden');
+    button.removeAttribute('tabindex');
+    button.setAttribute('aria-labelledby', label.id);
+    var description = clone.querySelector('.nav-action-item-description');
+    if (description) {
+      description.id = 'morphe-font-nav-description';
+      description.removeAttribute('aria-hidden');
+      button.setAttribute('aria-describedby', description.id);
+    }
+    // Direct listener: the button is ours, and its click must not reach the
+    // reader's delegated nav handlers.
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSheet();
+    });
+    // The clone inherits the Appearance icon; a plain "Aa" reads as fonts.
+    var icon = clone.querySelector('.nav-action-item-icon');
+    if (icon) {
+      icon.innerHTML = '<span class="morphe-font-nav-glyph">Aa</span>';
+    }
+    item.parentNode.insertBefore(clone, item.nextSibling);
+  }
+
+  function openSheet() {
+    inject();
+    var doc = topDocument();
+    var overlay = doc.getElementById(OVERLAY_ID);
+    if (!overlay) {
+      return;
+    }
+    overlay.hidden = false;
+    fitSheet();
+    syncSection();
+  }
+
+  function closeSheet() {
+    var doc = topDocument();
+    var overlay = doc.getElementById(OVERLAY_ID);
+    if (!overlay) {
+      return;
+    }
+    // Blur first so the keyboard goes away with the sheet.
+    var active = doc.activeElement;
+    if (active && active !== doc.body && overlay.contains(active) &&
+        typeof active.blur === 'function') {
+      active.blur();
+    }
+    overlay.hidden = true;
+  }
+
+  // Our sheet is fixed-position, so it can end exactly at the keyboard without
+  // any of the reader's settings scroller being involved.
+  function fitSheet() {
+    var doc = topDocument();
+    var overlay = doc.getElementById(OVERLAY_ID);
+    var viewport = window.visualViewport;
+    if (!overlay || overlay.hidden || !viewport) {
+      return;
+    }
+    var top = viewport.offsetTop || 0;
+    var height = Math.max(120, Math.round(viewport.height));
+    overlay.style.top = top + 'px';
+    overlay.style.bottom = 'auto';
+    overlay.style.height = height + 'px';
+    var panel = overlay.querySelector('.morphe-font-panel');
+    if (panel) {
+      panel.style.maxHeight = Math.max(120, height - 12) + 'px';
+    }
+    // The add-face modal is fixed too; give it the same visible area. Its own
+    // sheet body then scrolls inside that area.
+    var add = doc.getElementById(ADD_DIALOG_ID);
+    if (add) {
+      add.style.top = top + 'px';
+      add.style.bottom = 'auto';
+      add.style.height = height + 'px';
+    }
   }
 
   // The shibui switch is initialized by the reader's own JS. Our copy is created
@@ -1034,7 +1131,6 @@
     sheet.setAttribute('aria-modal', 'true');
     overlay.appendChild(sheet);
     section.appendChild(overlay);
-    fitAddDialog();
 
     var title = el(doc, 'h4', 'morphe-font-modal-title',
       addDialog === 'fonts' ? 'Select a font' : 'Add a face');
@@ -1121,203 +1217,6 @@
     addDialog = '';
     addQuery = '';
     syncSection();
-  }
-
-  function scrollParents(node, delta, stopAt) {
-    var remaining = delta;
-    var parent = node.parentElement;
-    while (parent && parent !== document.body && parent !== stopAt
-        && remaining !== 0) {
-      var style = getComputedStyle(parent);
-      var overflow = style.overflowY;
-      if ((overflow === 'auto' || overflow === 'scroll')
-          && parent.scrollHeight > parent.clientHeight + 1) {
-        var before = parent.scrollTop;
-        var max = parent.scrollHeight - parent.clientHeight;
-        parent.scrollTop = Math.max(0, Math.min(max, before + remaining));
-        remaining -= parent.scrollTop - before;
-      }
-      parent = parent.parentElement;
-    }
-    if (remaining !== 0 && !stopAt) {
-      var doc = topDocument();
-      var root = doc.scrollingElement || doc.documentElement;
-      if (root) {
-        root.scrollTop = Math.max(0, root.scrollTop + remaining);
-      }
-    }
-  }
-
-  function scrollParentOf(node, stopAt) {
-    var parent = node.parentElement;
-    while (parent && parent !== stopAt) {
-      var style = getComputedStyle(parent);
-      if ((style.overflowY === 'auto' || style.overflowY === 'scroll')
-          && parent.scrollHeight > parent.clientHeight + 1) {
-        return parent;
-      }
-      parent = parent.parentElement;
-    }
-    return null;
-  }
-
-  var scrollPad = null;
-
-  // The settings scroller is often already at its maximum, leaving nowhere to
-  // scroll the search above the keyboard. Temporary bottom padding creates the
-  // missing room; it is removed as soon as the field loses focus or the
-  // keyboard closes.
-  function ensureScrollPadding(scroller, amount) {
-    if (!scrollPad || scrollPad.scroller !== scroller) {
-      clearScrollPadding();
-      scrollPad = {
-        scroller: scroller,
-        base: parseFloat(getComputedStyle(scroller).paddingBottom) || 0,
-        original: scroller.style.paddingBottom,
-        amount: 0
-      };
-    }
-    if (amount > scrollPad.amount + 1) {
-      scrollPad.amount = amount;
-      scroller.style.paddingBottom = (scrollPad.base + amount) + 'px';
-    }
-  }
-
-  function clearScrollPadding() {
-    if (!scrollPad) {
-      return;
-    }
-    scrollPad.scroller.style.paddingBottom = scrollPad.original;
-    scrollPad = null;
-  }
-
-  // Put a focused field in the upper part of the visible area so the keyboard
-  // cannot cover it. Uses visualViewport when the keyboard shrinks it.
-  function revealInput(input) {
-    if (!input || typeof input.getBoundingClientRect !== 'function') {
-      return;
-    }
-    var rect = input.getBoundingClientRect();
-    var viewport = window.visualViewport;
-    var top = viewport ? (viewport.offsetTop || 0) : 0;
-    var height = viewport ? viewport.height : (window.innerHeight || 0);
-    if (!height) {
-      return;
-    }
-    var keyboard = Math.max(0, (window.innerHeight || 0) - (top + height));
-
-    // The main library search sits in a dialog scroller that may already be at
-    // its end. Move it up (and the list below it into view) once the keyboard
-    // is open, adding temporary space only when the scroller cannot go further.
-    if (input.id === 'morphe-font-search' && keyboard > 60) {
-      var scroller = scrollParentOf(input, null);
-      if (scroller) {
-        var margin = 24;
-        var visibleBottom = top + height;
-        var move = Math.max(keyboard, rect.bottom - (visibleBottom - margin));
-        var target = scroller.scrollTop + move;
-        var scrollerRect = scroller.getBoundingClientRect();
-        var inputOffset = rect.top - scrollerRect.top + scroller.scrollTop;
-        // Never push the field above the top of its own scroller.
-        target = Math.min(target, Math.max(0, inputOffset - 8));
-        var max = scroller.scrollHeight - scroller.clientHeight;
-        if (target > max) {
-          ensureScrollPadding(scroller, target - max);
-        }
-        scroller.scrollTop = target;
-        return;
-      }
-    }
-
-    var targetTop = top + Math.max(16, height * 0.12);
-    var delta = rect.top - targetTop;
-    if (Math.abs(delta) >= 2) {
-      scrollParents(input, delta, input.closest('.morphe-font-modal'));
-    }
-  }
-
-  function setAddKeyboard(on) {
-    var section = topDocument().getElementById(SECTION_ID);
-    var overlay = section && section.querySelector('#' + ADD_DIALOG_ID);
-    if (!overlay) {
-      return;
-    }
-    if (on) {
-      overlay.classList.add('is-keyboard');
-    } else {
-      overlay.classList.remove('is-keyboard');
-    }
-  }
-
-  // The on-screen keyboard shrinks the visual viewport but not always the
-  // layout viewport, so a centered sheet can end up underneath it. Match the
-  // overlay to the visible area and keep a focused input in view.
-  function fitAddDialog() {
-    var section = topDocument().getElementById(SECTION_ID);
-    var overlay = section && section.querySelector('#' + ADD_DIALOG_ID);
-    var viewport = window.visualViewport;
-    if (!overlay || !viewport) {
-      return;
-    }
-    var sheet = overlay.querySelector('.morphe-font-modal-sheet');
-    if (!sheet) {
-      return;
-    }
-    overlay.style.top = (viewport.offsetTop || 0) + 'px';
-    overlay.style.bottom = 'auto';
-    overlay.style.height = viewport.height + 'px';
-    sheet.style.maxHeight = Math.max(160, viewport.height - 48) + 'px';
-
-    var active = topDocument().activeElement;
-    if (active && active.tagName === 'INPUT' && overlay.contains(active)) {
-      revealInput(active);
-    }
-  }
-
-  function onViewportChange() {
-    fitAddDialog();
-    var active = topDocument().activeElement;
-    var viewport = window.visualViewport;
-    var keyboard = viewport
-      ? (window.innerHeight || 0) - ((viewport.offsetTop || 0) + viewport.height)
-      : 0;
-    if (keyboard <= 60) {
-      clearScrollPadding();
-    } else if (active && (active.id === 'morphe-font-search'
-        || active.id === 'morphe-font-add-search')) {
-      revealInput(active);
-    }
-  }
-
-  function onDocumentFocus(event) {
-    var target = event.target;
-    if (!target || target.tagName !== 'INPUT') {
-      return;
-    }
-    if (target.id === 'morphe-font-add-search') {
-      setAddKeyboard(true);
-      fitAddDialog();
-    }
-    if (target.id === 'morphe-font-add-search' || target.id === 'morphe-font-search') {
-      revealInput(target);
-      // One follow-up after the keyboard animation; not a repeating timer.
-      setTimeout(function () {
-        revealInput(target);
-      }, 300);
-    }
-  }
-
-  function onDocumentBlur(event) {
-    var target = event.target;
-    if (!target) {
-      return;
-    }
-    if (target.id === 'morphe-font-add-search') {
-      setAddKeyboard(false);
-    }
-    if (target.id === 'morphe-font-add-search' || target.id === 'morphe-font-search') {
-      clearScrollPadding();
-    }
   }
 
   // Faces carry their absolute stored index; the array index can differ when a
@@ -1576,7 +1475,7 @@
     try {
       slider.setPointerCapture(event.pointerId);
     } catch (e) {
-      // Capture is a convenience; the document listeners still get the moves.
+      // Capture is a convenience; the overlay listener still gets the moves.
     }
     event.preventDefault();
   }
@@ -1867,11 +1766,19 @@
     syncSection();
   }
 
-  function onDocumentClick(event) {
+  // Listeners live on the overlay, not the document: the sheet is ours and its
+  // contents are only re-rendered by the functions below.
+  function onUiClick(event) {
     var target = event.target;
     if (!target || !target.closest) {
       return;
     }
+
+    if (target.closest('[data-font-close]')) {
+      closeSheet();
+      return;
+    }
+
     if (target.closest('#morphe-font-upload')) {
       pickFont();
       return;
@@ -1962,14 +1869,9 @@
       detectCurrent();
       return;
     }
-
-    var button = target.closest('button.nav-action-item-button.halo');
-    if (button && isAppearanceButton(button)) {
-      scheduleInject();
-    }
   }
 
-  function onDocumentChange(event) {
+  function onUiChange(event) {
     var target = event.target;
     if (!target) {
       return;
@@ -2004,7 +1906,7 @@
     }
   }
 
-  function onDocumentInput(event) {
+  function onUiInput(event) {
     var target = event.target;
     if (!target) {
       return;
@@ -2020,7 +1922,7 @@
     }
   }
 
-  function onDocumentKeydown(event) {
+  function onUiKeydown(event) {
     var target = event.target;
     if (!target) {
       return;
@@ -2047,55 +1949,111 @@
     onSliderKeyDown(event);
   }
 
+  // The sheet ends where the keyboard starts, so a focused field is already in
+  // the visible part of the panel body. This only brings it fully into view
+  // inside that body; it never relies on the window scrolling.
+  function onFocusIn(event) {
+    var target = event.target;
+    if (!target || !target.tagName) {
+      return;
+    }
+    var doc = topDocument();
+    var overlay = doc.getElementById(OVERLAY_ID);
+    if (!overlay || overlay.hidden || !overlay.contains(target)) {
+      return;
+    }
+    if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+      return;
+    }
+    setTimeout(function () {
+      fitSheet();
+      try {
+        target.scrollIntoView({ block: 'nearest' });
+      } catch (e) {
+        // Focus is still usable without the scroll hint.
+      }
+    }, 50);
+  }
+
   function wireEvents(doc) {
     if (eventsWired) {
       return;
     }
     eventsWired = true;
-    // Capture phase: Libby stops some clicks before they bubble, but capture
-    // still sees them. Delegation also survives the dialog being re-rendered.
-    doc.addEventListener('click', onDocumentClick, true);
-    doc.addEventListener('change', onDocumentChange, true);
-    doc.addEventListener('input', onDocumentInput, true);
-    doc.addEventListener('keydown', onDocumentKeydown, true);
-    doc.addEventListener('keyup', onSliderKeyUp, true);
-    doc.addEventListener('pointerdown', onSliderPointerDown, true);
-    doc.addEventListener('pointermove', onSliderPointerMove, true);
-    doc.addEventListener('pointerup', endSliderDrag, true);
-    doc.addEventListener('pointercancel', endSliderDrag, true);
-    // load does not bubble, but the capture phase still reaches the document.
+    // The reader stops propagation of UI events above our sheet, so a listener
+    // on the overlay itself never runs (only native defaults like the checkbox
+    // still work). Listening on window in the capture phase runs first, before
+    // any reader handler can swallow the event.
+    window.addEventListener('click', onUiClick, true);
+    window.addEventListener('change', onUiChange, true);
+    window.addEventListener('input', onUiInput, true);
+    window.addEventListener('keydown', onUiKeydown, true);
+    window.addEventListener('keyup', onSliderKeyUp, true);
+    window.addEventListener('pointerdown', onSliderPointerDown, true);
+    window.addEventListener('pointermove', onSliderPointerMove, true);
+    window.addEventListener('pointerup', endSliderDrag, true);
+    window.addEventListener('pointercancel', endSliderDrag, true);
+    window.addEventListener('focusin', onFocusIn, true);
+    // Chapter iframes live in the reader document, not in the sheet, and their
+    // load events do not bubble. The capture phase on the document sees them.
     doc.addEventListener('load', onFrameLoad, true);
-    doc.addEventListener('focus', onDocumentFocus, true);
-    doc.addEventListener('blur', onDocumentBlur, true);
-    // The keyboard changes the visual viewport, not the layout viewport, on
-    // some Android versions. Resize events are enough; no polling.
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', onViewportChange);
+    // Libby's activity is adjustPan, so the keyboard does not resize the
+    // layout viewport. Keep our fixed sheet pinned to the visual viewport
+    // instead: resize fires when the keyboard opens, scroll when Chromium pans.
+    var viewport = window.visualViewport;
+    if (viewport) {
+      viewport.addEventListener('resize', fitSheet);
+      viewport.addEventListener('scroll', fitSheet);
     }
   }
 
   function inject() {
     var doc = topDocument();
-    var host = doc.querySelector('.readability-dialog-sections');
-    if (!host) {
+    if (!doc.body) {
       return;
     }
+    ensureNavButton(doc);
 
-    var section = host.querySelector('[' + SECTION_FLAG + ']');
+    var overlay = doc.getElementById(OVERLAY_ID);
+    var section = null;
     var created = false;
 
-    if (!section) {
+    if (!overlay) {
       var html = uiHtml();
       if (!html) {
         return;
       }
+      // Our own sheet, appended to the reader document. Libby's Appearance
+      // dialog and its scroller are not involved, so the panel can end exactly
+      // where the keyboard starts.
+      overlay = doc.createElement('div');
+      overlay.id = OVERLAY_ID;
+      overlay.className = 'morphe-font-overlay';
+      overlay.hidden = true;
+      overlay.innerHTML =
+        '<div class="morphe-font-backdrop" data-font-close></div>' +
+        '<div class="morphe-font-panel" role="dialog" aria-modal="true"' +
+        ' aria-labelledby="morphe-font-panel-title">' +
+        '<div class="morphe-font-panel-head">' +
+        '<h2 class="morphe-font-panel-title" id="morphe-font-panel-title">Custom Font</h2>' +
+        '<button class="morphe-font-panel-close" type="button" data-font-close>Done</button>' +
+        '</div>' +
+        '<div class="morphe-font-panel-body"></div>' +
+        '</div>';
+      doc.body.appendChild(overlay);
+
       section = doc.createElement('div');
       section.className = 'readability-section readability-section-font';
       section.id = SECTION_ID;
       section.setAttribute(SECTION_FLAG, '1');
       section.innerHTML = html;
-      host.appendChild(section);
+      overlay.querySelector('.morphe-font-panel-body').appendChild(section);
       created = true;
+    } else {
+      section = overlay.querySelector('[' + SECTION_FLAG + ']');
+      if (!section) {
+        return;
+      }
     }
 
     var helper = doc.getElementById('morphe-font-helper-style');
@@ -2107,8 +2065,7 @@
     }
 
     if (created) {
-      // The dialog is rebuilt from scratch each time it opens, so drop the
-      // transient filter and editor state with it.
+      // Start each freshly built sheet with no transient filter/editor state.
       searchQuery = '';
       editingId = '';
       addDialog = '';
@@ -2141,8 +2098,6 @@
       if (state) {
         applyState(state);
       }
-      var doc = topDocument();
-      wireEvents(doc);
       inject();
       apply();
     },

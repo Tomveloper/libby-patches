@@ -606,11 +606,6 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
-#morphe-font-settings .morphe-font-modal.is-keyboard {
-  align-items: flex-start;
-  padding-top: 8px;
-}
-
 #morphe-font-settings .morphe-font-modal-sheet {
   display: flex;
   flex-direction: column;
@@ -658,3 +653,130 @@
   opacity: 0.6;
 }
 
+
+/* --- Font sheet ---------------------------------------------------------
+   Our own modal, so none of Libby's shade sizing, padding or keyboard
+   behavior applies. The element is fixed and fitted to the visual viewport by
+   controller.js, which is what keeps it above the keyboard. */
+
+#morphe-font-overlay[hidden] {
+  display: none !important;
+}
+
+#morphe-font-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  /* Transparent: the panel and backdrop paint; the reader stays visible. */
+  background: transparent;
+  color-scheme: light dark;
+}
+
+#morphe-font-overlay .morphe-font-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#morphe-font-overlay .morphe-font-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  border-radius: 16px 16px 0 0;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+#morphe-font-overlay .morphe-font-panel-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  border-bottom-color: color-mix(in srgb, currentColor 24%, transparent);
+}
+
+#morphe-font-overlay .morphe-font-panel-title {
+  margin: 0;
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
+#morphe-font-overlay .morphe-font-panel-close {
+  flex: 0 0 auto;
+  padding: 8px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#morphe-font-overlay .morphe-font-panel-close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+/* The only scroller in the sheet. Flex min-height:0 lets it shrink when the
+   keyboard opens, so its content stays scrollable instead of being clipped. */
+#morphe-font-overlay .morphe-font-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 0 16px 16px;
+}
+
+/* The panel header already titles the sheet. */
+#morphe-font-overlay #morphe-font-settings .readability-section-label {
+  display: none !important;
+}
+
+#morphe-font-overlay #morphe-font-settings {
+  margin: 0;
+}
+
+/* Nested scrollers are awkward with a keyboard open: the panel body scrolls,
+   so the list and editor can grow to their natural height. The add-face modal
+   keeps its own height cap below. */
+#morphe-font-overlay .morphe-font-list,
+#morphe-font-overlay #morphe-font-editor {
+  max-height: none;
+  overflow: visible;
+}
+
+#morphe-font-overlay .morphe-font-modal-sheet {
+  max-height: 100%;
+}
+
+/* Font item in the reader's nav bar. The button markup is Libby's, cloned from
+   the Appearance item; only the icon inner content is ours. */
+#morphe-font-nav-item .morphe-font-nav-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.92em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
