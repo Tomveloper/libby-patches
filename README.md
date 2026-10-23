@@ -4,15 +4,18 @@ Morphe patches for the Android **Libby: Read Library Books** app.
 
 ## About
 
-This repository contains patches for Libby. The current patch adds a
-**Custom Font Settings** section to the reader, with:
+This repository contains patches for Libby. The current patch adds a **Patch
+Settings** sheet to the reader, opened from a **Fonts** item next to Appearance,
+with a **Custom Font** section:
 
-- Upload a local WOFF2, WOFF, TTF, or OTF font.
+- Upload local WOFF2, WOFF, TTF, or OTF fonts, and keep several families and
+  faces.
 - The reader shows **No font selected** until you upload one.
+- Choose the **reading weight** used for chapter text.
 - The font is copied into the app's private storage and streamed locally through
   a shared `/morphe/` request router. No remote font URL, no network request, and
   no fixed file-size limit.
-- An on/off toggle that persists across launches.
+- The font choice, weight, and on/off state persist across launches.
 - An event-driven runtime with **no polling**, keeping battery use low for a
   reader app.
 

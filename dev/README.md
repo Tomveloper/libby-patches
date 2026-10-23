@@ -1,62 +1,31 @@
-# Font UI development
+# Development helpers
 
-The UI is split into three source files:
+The font UI is compiled into the extension. There is no separate JavaScript
+bundle step: `extensions/font/build.gradle.kts` generates `FontUiData.java` from
+`extensions/font/src/main/font-ui/{section.html,section.css,controller.js}` on
+every build.
 
-```
-extensions/font/src/main/font-ui/
-  section.html     markup
-  section.css      styles
-  controller.js    behavior
-```
+## Live WebView inspection
 
-They are **not** fetched at runtime. The Gradle build embeds `controller.js` as
-`FontUiData.JS`; the native bridge serves the HTML and CSS from `FontUiData`.
-The WebView still evaluates one script.
+Both helpers evaluate an expression in the reader through the Chrome DevTools
+Protocol. WebView debugging must be enabled (the optional patch) and Libby must
+be running with a book open.
 
-## Build the dev bundle
+`dev/cdp-eval.mjs` sets up the adb port forward itself:
 
 ```powershell
-node dev/build-font-ui.mjs
+node dev/cdp-eval.mjs "document.title"
 ```
 
-This writes:
-
-- `dev/dist/font-ui.js` - the UI bundle (defines `window.MorpheFont`)
-- `dev/dist/inject.js` - the bundle plus a test init call
-
-`dev/dist/` is generated and ignored by Git. Run the command after changing
-`controller.js`.
-
-## Test in the reader
-
-### Manual
-
-Open the reader, open DevTools, and paste the contents of
-`dev/dist/inject.js` into the console.
-
-### Automatic
-
-With the phone connected (`adb devices` must list it), the reader open, and the
-debug patch installed:
+`dev/cdp-eval.js` is the same evaluator for an already-forwarded socket:
 
 ```powershell
-node dev/inject-font-ui.mjs
+adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>
+node dev/cdp-eval.js "document.title"
 ```
 
-The script forwards the WebView debug socket, finds the `read.libbyshelf.com`
-page, and runs `dev/dist/inject.js` over the DevTools protocol.
+Useful selectors while the sheet is open:
 
-Dev injection bypasses the native bridge, so it uses a monospace fallback style
-and treats it as the selected font. The real extension uses the font you upload
-in **Custom Font Settings**.
-
-## Runtime build
-
-`extensions/font/build.gradle.kts` generates `FontUiData.java` from the same
-three files. `FontHook` evaluates `FontUiData.JS` and calls:
-
-```text
-MorpheFont.init(css, enabled, name, hasFont)
-```
-
-No `fetch()`, no asset lookup, and no extra runtime request is involved.
+- `#morphe-font-overlay` — the sheet (fixed to `visualViewport`)
+- `#morphe-font-settings` — the Custom Font section inside it
+- `#morphe-font-nav-item` — the reader nav button that opens it

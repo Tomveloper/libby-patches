@@ -57,9 +57,9 @@
         return b.getHtml();
       }
     } catch (e) {
-      // Fall through to the development fallback.
+      // The bridge is missing or the call failed; render nothing.
     }
-    return window.MORPHE_FONT_HTML || '';
+    return '';
   }
 
   function uiCss() {
@@ -69,9 +69,9 @@
         return b.getCss();
       }
     } catch (e) {
-      // Fall through to the development fallback.
+      // The bridge is missing or the call failed; inject nothing.
     }
-    return window.MORPHE_FONT_CSS || '';
+    return '';
   }
 
   function applyTo(doc) {
@@ -2163,15 +2163,6 @@
       apply();
     },
 
-    setEnabled: function (isEnabled) {
-      enabled = hasFont && !!isEnabled;
-      var section = topDocument().getElementById(SECTION_ID);
-      if (section) {
-        setSwitch(section, enabled);
-      }
-      apply();
-    },
-
     // Called after an upload or by any native change to the font library.
     onLibraryChanged: function (json) {
       var state = parseState(json);
@@ -2190,10 +2181,6 @@
     onPickCancelled: function () {
       var section = topDocument().getElementById(SECTION_ID);
       setStatus(section, baseStatus());
-    },
-
-    reload: function () {
-      apply();
     }
   };
 })();

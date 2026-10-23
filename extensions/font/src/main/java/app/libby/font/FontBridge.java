@@ -140,19 +140,7 @@ public final class FontBridge {
         return FontUiData.CSS;
     }
 
-    /**
-     * Everything the UI needs to draw the list: the stored fonts, which one is
-     * selected, and whether the custom font is switched on.
-     */
-    @JavascriptInterface
-    public String getLibrary() {
-        WebView view = webView.get();
-        if (view == null) {
-            return "{}";
-        }
-        return libraryStateJson(view.getContext());
-    }
-
+    /** Opens the native document picker for a new family. */
     @JavascriptInterface
     public void pickFont() {
         openPicker(webView.get(), null);
@@ -660,22 +648,8 @@ public final class FontBridge {
     }
 
     /**
-     * Returns the active font file, or null when nothing is selected. The
-     * canonical-path check keeps a malformed index from escaping the app's
-     * private font directory.
-     */
-    public static File fontFile(Context context) {
-        JSONObject entry = selectedEntry(context);
-        if (entry == null) {
-            return null;
-        }
-        JSONObject variant = variantOf(entry, liveFace(context, entry));
-        return variant == null ? null : resolve(context, variant.optString("file"));
-    }
-
-    /**
      * JSON consumed by the injected UI and by FontHook:
-     * {"selected":"id","enabled":true,"fonts":[{"id","name","format","size","url"}]}
+     * {"selected":"id","enabled":true,"weight":400,"fonts":[...]}
      */
     public static String libraryStateJson(Context context) {
         try {
