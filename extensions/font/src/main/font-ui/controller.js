@@ -219,7 +219,11 @@
     overlay.style.height = height + 'px';
     var panel = overlay.querySelector('.morphe-font-panel');
     if (panel) {
-      panel.style.maxHeight = Math.max(120, height - 12) + 'px';
+      // Half the visible area. The panel body is the scroller, so longer
+      // content scrolls inside the sheet instead of growing it.
+      var panelHeight = Math.max(Math.min(200, height), Math.round(height * 0.6));
+      panel.style.height = panelHeight + 'px';
+      panel.style.maxHeight = panelHeight + 'px';
     }
     // The add-face modal is fixed too; give it the same visible area. Its own
     // sheet body then scrolls inside that area.
