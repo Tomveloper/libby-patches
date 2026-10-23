@@ -534,10 +534,17 @@ public final class FontBridge {
 
                 JSONArray merged = variantsOf(target);
                 JSONArray sourceVariants = variantsOf(source);
+                String sourceName = source.optString("name", "");
                 for (int i = 0; i < sourceVariants.length(); i++) {
                     JSONObject variant = sourceVariants.optJSONObject(i);
                     if (variant != null
                             && resolve(context, variant.optString("file")) != null) {
+                        // Faces added before per-face names existed still need a
+                        // label; the source family name is the closest match.
+                        if (variant.optString("name", "").isEmpty()
+                                && !sourceName.isEmpty()) {
+                            variant.put("name", sourceName);
+                        }
                         merged.put(variant);
                     }
                 }
@@ -662,6 +669,7 @@ public final class FontBridge {
                         continue;
                     }
                     String id = entry.optString("id");
+                    String entryName = entry.optString("name", "Custom font");
                     JSONArray storedVariants = variantsOf(entry);
                     JSONArray liveVariants = new JSONArray();
                     long totalSize = 0;
@@ -695,6 +703,7 @@ public final class FontBridge {
                         item.put("url", urlFor(
                                 id, j, added > 0 ? added : file.lastModified()));
                         item.put("face", j);
+                        item.put("name", variant.optString("name", entryName));
                         item.put("format", variant.optString("format",
                                 formatFromName(variant.optString("file"))));
                         item.put("size", file.length());
@@ -720,7 +729,7 @@ public final class FontBridge {
 
                     JSONObject item = new JSONObject();
                     item.put("id", id);
-                    item.put("name", entry.optString("name", "Custom font"));
+                    item.put("name", entryName);
                     item.put("format", first.optString("format", "woff2"));
                     item.put("size", totalSize);
                     item.put("url", firstUrl);
@@ -814,8 +823,14 @@ public final class FontBridge {
             }
             weight = Math.max(min, Math.min(max, weight));
 
+            String name = displayName(context, uri);
+            if (name == null || name.isEmpty()) {
+                name = font.getName();
+            }
+
             JSONObject variant = new JSONObject();
             variant.put("file", font.getName());
+            variant.put("name", name);
             variant.put("format", format);
             variant.put("weight", weight);
             variant.put("weightMin", min);
@@ -823,7 +838,6 @@ public final class FontBridge {
             variant.put("italic", meta.ok && meta.italic);
             variant.put("auto", meta.ok);
 
-            String name = displayName(context, uri);
             long added = System.currentTimeMillis();
 
             synchronized (FontBridge.class) {

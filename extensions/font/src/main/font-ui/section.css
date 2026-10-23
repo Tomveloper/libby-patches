@@ -289,8 +289,7 @@
   user-select: none;
 }
 
-#morphe-font-settings .morphe-font-name-input,
-#morphe-font-settings .morphe-font-select {
+#morphe-font-settings .morphe-font-name-input {
   box-sizing: border-box;
   width: 100%;
   min-height: 40px;
@@ -337,6 +336,15 @@
   min-width: 0;
   font-size: 0.85em;
   opacity: 0.6;
+}
+
+#morphe-font-settings .morphe-font-face-file {
+  margin: -2px 0 6px;
+  font-size: 0.8em;
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #morphe-font-settings .morphe-font-link,
@@ -546,17 +554,6 @@
   background: color-mix(in srgb, currentColor 24%, transparent);
 }
 
-#morphe-font-settings .morphe-font-merge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-#morphe-font-settings .morphe-font-merge .morphe-font-select {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 #morphe-font-settings .morphe-font-hint {
   margin: 4px 0 0;
   min-height: 1.35em;
@@ -590,9 +587,74 @@
 #morphe-font-settings .morphe-font-back:focus-visible,
 #morphe-font-settings .morphe-font-action:focus-visible,
 #morphe-font-settings .morphe-font-link:focus-visible,
-#morphe-font-settings .morphe-font-name-input:focus-visible,
-#morphe-font-settings .morphe-font-select:focus-visible {
+#morphe-font-settings .morphe-font-name-input:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 1px;
+}
+
+/* One sheet for both ways of adding faces. It lives inside the section so
+   these scoped rules apply, but covers the viewport like a native dialog. */
+#morphe-font-settings .morphe-font-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#morphe-font-settings .morphe-font-modal.is-keyboard {
+  align-items: flex-start;
+  padding-top: 8px;
+}
+
+#morphe-font-settings .morphe-font-modal-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 12px;
+  background: #fff;
+  background: Canvas;
+  color: #111;
+  color: CanvasText;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+#morphe-font-settings .morphe-font-modal-title {
+  margin: 0 0 4px;
+  font-size: 1em;
+  font-weight: 700;
+}
+
+#morphe-font-settings .morphe-font-modal-note {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.4;
+  opacity: 0.7;
+}
+
+#morphe-font-settings .morphe-font-modal .morphe-font-list {
+  max-height: 45vh;
+  border-bottom: 0;
+}
+
+#morphe-font-settings .morphe-font-modal .morphe-font-link {
+  align-self: flex-start;
+}
+
+#morphe-font-settings .morphe-font-modal .morphe-font-note {
+  margin: 0;
+  font-size: 0.78em;
+  line-height: 1.35;
+  opacity: 0.6;
 }
 

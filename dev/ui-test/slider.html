@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="../../extensions/font/src/main/font-ui/section.css">
 <style>
   body { width: 380px; margin: 16px; font-family: sans-serif; color: #222; }
-  .readability-dialog-sections { border: 1px solid #999; padding: 8px; }
+  .readability-dialog-sections { border: 1px solid #999; padding: 8px; max-height: 120px; overflow-y: auto; }
   #diag { white-space: pre-wrap; font: 11px/1.35 monospace; margin-top: 16px; }
 </style>
 </head>
@@ -30,6 +30,7 @@
       url: '/morphe/font/a/0?v=1',
       variants: [{
         face: 0,
+        name: 'VariableTest.ttf',
         format: 'ttf',
         size: 1234,
         weight: 400,
@@ -38,6 +39,28 @@
         italic: false,
         auto: true,
         url: '/morphe/font/a/0?v=1'
+      }]
+    }, {
+      id: 'b',
+      name: 'Second Test',
+      format: 'ttf',
+      size: 2222,
+      weight: 700,
+      weightMin: 700,
+      weightMax: 700,
+      italic: false,
+      url: '/morphe/font/b/0?v=2',
+      variants: [{
+        face: 0,
+        name: 'SecondFace.ttf',
+        format: 'ttf',
+        size: 2222,
+        weight: 700,
+        weightMin: 700,
+        weightMax: 700,
+        italic: false,
+        auto: true,
+        url: '/morphe/font/b/0?v=2'
       }]
     }]
   };
@@ -71,7 +94,16 @@
     },
     detectFont: function () { return stateJson(); },
     removeFace: function () { return stateJson(); },
-    mergeFont: function () { return stateJson(); },
+    mergeFont: function (targetId, sourceId) {
+      var target = state.fonts.filter(function (f) { return f.id === targetId; })[0];
+      var source = state.fonts.filter(function (f) { return f.id === sourceId; })[0];
+      if (!target || !source) {
+        return stateJson();
+      }
+      target.variants = target.variants.concat(source.variants);
+      state.fonts = state.fonts.filter(function (f) { return f.id !== sourceId; });
+      return stateJson();
+    },
     pickFont: function () {},
     pickVariant: function () {}
   };
@@ -91,8 +123,23 @@
     pre.textContent += text + '\n';
   }
 
+  window.addEventListener('error', function (event) {
+    diag('ERROR: ' + event.message + ' @' + event.filename + ':' + event.lineno);
+  });
+
   function start() {
     window.MorpheFont.init('', true, 'Variable Test', true, JSON.stringify(state));
+    setTimeout(function () {
+      var host = document.querySelector('.readability-dialog-sections');
+      var search = document.getElementById('morphe-font-search');
+      host.scrollTop = 0;
+      diag('search pre: top=' + Math.round(search.getBoundingClientRect().top) +
+        ' scroll=' + host.scrollTop + ' h=' + host.scrollHeight + '/' + host.clientHeight);
+      search.focus();
+      diag('search post: top=' + Math.round(search.getBoundingClientRect().top) +
+        ' scroll=' + host.scrollTop);
+    }, 100);
+
     setTimeout(function () {
       var edit = document.querySelector('[data-font-edit]');
       diag('edit button: ' + !!edit);
@@ -121,6 +168,64 @@
           ' rect=' + JSON.stringify(handle.getBoundingClientRect()));
       }
     }, 600);
+
+    setTimeout(function () {
+      var file = document.querySelector('.morphe-font-face-file');
+      diag('face file: ' + (file ? file.textContent : 'none'));
+      var add = document.querySelector('[data-face-add]');
+      diag('add button: ' + !!add);
+      if (add) {
+        try {
+          add.click();
+        } catch (e) {
+          diag('click error: ' + e);
+        }
+      }
+    }, 700);
+
+    setTimeout(function () {
+      diag('dialog options: ' + !!document.getElementById('morphe-font-add-dialog'));
+      diag('upload option: ' + !!document.querySelector('[data-add-upload]'));
+      diag('select option: ' + !!document.querySelector('[data-add-pick]'));
+      var pick = document.querySelector('[data-add-pick]');
+      if (pick) {
+        pick.click();
+      }
+    }, 800);
+
+    setTimeout(function () {
+      diag('dialog fonts: ' + !!document.getElementById('morphe-font-add-search'));
+      var overlay = document.getElementById('morphe-font-add-dialog');
+      var sheet = overlay && overlay.querySelector('.morphe-font-modal-sheet');
+      diag('keyboard align: ' + (overlay
+        ? overlay.classList.contains('is-keyboard') + '/' +
+          getComputedStyle(overlay).alignItems
+        : 'none'));
+      diag('sheet max: ' + (sheet ? sheet.style.maxHeight : 'none'));
+      diag('font rows: ' +
+        document.querySelectorAll('#morphe-font-add-list [data-add-font]').length);
+      var search = document.getElementById('morphe-font-add-search');
+      if (search) {
+        search.value = 'second';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      var filtered = document.querySelectorAll('#morphe-font-add-list [data-add-font]');
+      diag('filtered rows: ' + filtered.length);
+      if (filtered.length) {
+        filtered[0].click();
+      }
+    }, 900);
+
+    setTimeout(function () {
+      diag('dialog after merge: ' +
+        !!document.getElementById('morphe-font-add-dialog'));
+      var files = document.querySelectorAll('.morphe-font-face-file');
+      diag('faces: ' + files.length + ' names: ' +
+        Array.prototype.map.call(files, function (node) {
+          return node.textContent;
+        }).join(', '));
+      diag('fonts left: ' + state.fonts.length);
+    }, 1000);
   }
 </script>
 </body>

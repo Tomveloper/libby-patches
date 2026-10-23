@@ -3,6 +3,7 @@
 
   var SECTION_ID = 'morphe-font-settings';
   var SECTION_FLAG = 'data-morphe-font-ui';
+  var ADD_DIALOG_ID = 'morphe-font-add-dialog';
   var ROOT_FLAG = 'data-morphe-font-root';
   var ROOT_SELECTOR = 'html[' + ROOT_FLAG + '][' + ROOT_FLAG + '][' + ROOT_FLAG + ']';
   var FONT_RULE = ROOT_SELECTOR + ',' +
@@ -18,6 +19,8 @@
   var selectedId = '';
   var searchQuery = '';
   var editingId = '';
+  var addDialog = '';
+  var addQuery = '';
   var eventsWired = false;
   var injectScheduled = false;
 
@@ -300,6 +303,7 @@
         weight = Math.max(min, Math.min(max, weight));
         faces.push({
           face: typeof variant.face === 'number' ? variant.face : i,
+          name: String(variant.name || ''),
           url: String(variant.url || ''),
           format: String(variant.format || (item && item.format) || ''),
           weight: weight,
@@ -322,6 +326,7 @@
       single = Math.max(singleMin, Math.min(singleMax, single));
       faces.push({
         face: 0,
+        name: String(item.name || ''),
         url: String(item.url || ''),
         format: String(item.format || ''),
         weight: single,
@@ -800,6 +805,11 @@
     }
     block.appendChild(head);
 
+    var fileName = face.name || font.name;
+    var file = el(doc, 'p', 'morphe-font-face-file', fileName);
+    file.title = fileName;
+    block.appendChild(file);
+
     var flags = el(doc, 'div', 'morphe-font-flags');
 
     var italic = el(doc, 'label', 'morphe-font-inline');
@@ -916,38 +926,10 @@
     editor.appendChild(faces);
 
     var actions = el(doc, 'div', 'morphe-font-actions');
-    var addFace = el(doc, 'button', 'morphe-font-action', 'Add face file\u2026');
+    var addFace = el(doc, 'button', 'morphe-font-action', 'Add face\u2026');
     addFace.type = 'button';
-    addFace.setAttribute('data-face-upload', '1');
+    addFace.setAttribute('data-face-add', '1');
     actions.appendChild(addFace);
-
-    var others = [];
-    for (var j = 0; j < fonts.length; j++) {
-      if (fonts[j].id !== font.id) {
-        others.push(fonts[j]);
-      }
-    }
-    if (others.length) {
-      var mergeRow = el(doc, 'div', 'morphe-font-merge');
-      var select = doc.createElement('select');
-      select.className = 'morphe-font-select';
-      select.setAttribute('data-merge-source', '1');
-      select.setAttribute('aria-label', 'Merge faces from another font');
-      for (var k = 0; k < others.length; k++) {
-        var option = doc.createElement('option');
-        option.value = others[k].id;
-        option.textContent = others[k].name;
-        select.appendChild(option);
-      }
-      mergeRow.appendChild(select);
-      var merge = el(doc, 'button', 'morphe-font-action', 'Merge');
-      merge.type = 'button';
-      merge.setAttribute('data-merge-add', '1');
-      mergeRow.appendChild(merge);
-      actions.appendChild(mergeRow);
-      actions.appendChild(el(doc, 'p', 'morphe-font-note',
-        'Merge adds every face of the other font to this one.'));
-    }
 
     var detect = el(doc, 'button', 'morphe-font-action', 'Detect automatically');
     detect.type = 'button';
@@ -972,6 +954,370 @@
 
   function editingFont() {
     return editingId ? findFont(editingId) : null;
+  }
+
+  function otherFonts(font) {
+    var out = [];
+    for (var i = 0; i < fonts.length; i++) {
+      if (!font || fonts[i].id !== font.id) {
+        out.push(fonts[i]);
+      }
+    }
+    return out;
+  }
+
+  function addFontChoice(doc, font) {
+    var row = el(doc, 'div', 'morphe-font-row');
+    var choice = el(doc, 'button', 'morphe-font-choice');
+    choice.type = 'button';
+    choice.setAttribute('data-add-font', font.id);
+    choice.appendChild(el(doc, 'span', 'morphe-font-choice-name', font.name));
+    choice.appendChild(el(doc, 'span', 'morphe-font-choice-meta', metaFor(font)));
+    row.appendChild(choice);
+    return row;
+  }
+
+  function fillAddFontList(section) {
+    if (!section || addDialog !== 'fonts') {
+      return;
+    }
+    var list = section.querySelector('#morphe-font-add-list');
+    var font = editingFont();
+    if (!list || !font) {
+      return;
+    }
+    list.textContent = '';
+    var query = addQuery.trim().toLowerCase();
+    var others = otherFonts(font);
+    var shown = 0;
+    for (var i = 0; i < others.length; i++) {
+      if (query && others[i].name.toLowerCase().indexOf(query) < 0) {
+        continue;
+      }
+      list.appendChild(addFontChoice(section.ownerDocument, others[i]));
+      shown++;
+    }
+    var empty = section.querySelector('#morphe-font-add-empty');
+    if (empty) {
+      empty.hidden = shown > 0;
+      empty.textContent = others.length
+        ? 'No fonts match that name.'
+        : 'No other fonts to merge.';
+    }
+  }
+
+  // A single sheet for both ways of adding faces: upload one file, or pick an
+  // existing family to merge. Built from the same rows as the main library list.
+  function renderAddDialog(section) {
+    if (!section) {
+      return;
+    }
+    var doc = section.ownerDocument;
+    var existing = section.querySelector('#' + ADD_DIALOG_ID);
+    if (existing) {
+      existing.parentNode.removeChild(existing);
+    }
+    if (!addDialog) {
+      return;
+    }
+    var font = editingFont();
+    if (!font) {
+      addDialog = '';
+      return;
+    }
+
+    var overlay = el(doc, 'div', 'morphe-font-modal');
+    overlay.id = ADD_DIALOG_ID;
+    overlay.setAttribute('data-add-backdrop', '1');
+    var sheet = el(doc, 'div', 'morphe-font-modal-sheet');
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-modal', 'true');
+    overlay.appendChild(sheet);
+    section.appendChild(overlay);
+    fitAddDialog();
+
+    var title = el(doc, 'h4', 'morphe-font-modal-title',
+      addDialog === 'fonts' ? 'Select a font' : 'Add a face');
+    sheet.appendChild(title);
+
+    if (addDialog === 'fonts') {
+      var search = doc.createElement('input');
+      search.type = 'search';
+      search.id = 'morphe-font-add-search';
+      search.className = 'morphe-font-search';
+      search.placeholder = 'Search fonts';
+      search.setAttribute('aria-label', 'Search fonts');
+      search.setAttribute('autocomplete', 'off');
+      search.setAttribute('spellcheck', 'false');
+      search.value = addQuery;
+      sheet.appendChild(search);
+
+      var list = el(doc, 'div', 'morphe-font-list');
+      list.id = 'morphe-font-add-list';
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Fonts to merge');
+      sheet.appendChild(list);
+
+      var empty = el(doc, 'p', 'morphe-font-modal-note');
+      empty.id = 'morphe-font-add-empty';
+      sheet.appendChild(empty);
+
+      var back = el(doc, 'button', 'morphe-font-link', '\u2190 Back');
+      back.type = 'button';
+      back.setAttribute('data-add-back', '1');
+      sheet.appendChild(back);
+
+      fillAddFontList(section);
+      try {
+        search.focus();
+      } catch (e) {
+        // Focus is a convenience.
+      }
+      return;
+    }
+
+    sheet.appendChild(el(doc, 'p', 'morphe-font-modal-note',
+      'Add one font file to "' + font.name + '", or merge every face of ' +
+      'another font from your library.'));
+
+    var upload = el(doc, 'button', 'morphe-font-action', 'Upload font file\u2026');
+    upload.type = 'button';
+    upload.setAttribute('data-add-upload', '1');
+    sheet.appendChild(upload);
+
+    var others = otherFonts(font);
+    if (others.length) {
+      var pick = el(doc, 'button', 'morphe-font-action', 'Select from library\u2026');
+      pick.type = 'button';
+      pick.setAttribute('data-add-pick', '1');
+      sheet.appendChild(pick);
+    } else {
+      sheet.appendChild(el(doc, 'p', 'morphe-font-note',
+        'No other fonts in the library to merge yet.'));
+    }
+
+    var cancel = el(doc, 'button', 'morphe-font-link', 'Cancel');
+    cancel.type = 'button';
+    cancel.setAttribute('data-add-cancel', '1');
+    sheet.appendChild(cancel);
+
+    try {
+      upload.focus();
+    } catch (e) {
+      // Focus is a convenience.
+    }
+  }
+
+  function openAddDialog() {
+    if (!editingFont()) {
+      return;
+    }
+    addDialog = 'options';
+    addQuery = '';
+    syncSection();
+  }
+
+  function closeAddDialog() {
+    addDialog = '';
+    addQuery = '';
+    syncSection();
+  }
+
+  function scrollParents(node, delta, stopAt) {
+    var remaining = delta;
+    var parent = node.parentElement;
+    while (parent && parent !== document.body && parent !== stopAt
+        && remaining !== 0) {
+      var style = getComputedStyle(parent);
+      var overflow = style.overflowY;
+      if ((overflow === 'auto' || overflow === 'scroll')
+          && parent.scrollHeight > parent.clientHeight + 1) {
+        var before = parent.scrollTop;
+        var max = parent.scrollHeight - parent.clientHeight;
+        parent.scrollTop = Math.max(0, Math.min(max, before + remaining));
+        remaining -= parent.scrollTop - before;
+      }
+      parent = parent.parentElement;
+    }
+    if (remaining !== 0 && !stopAt) {
+      var doc = topDocument();
+      var root = doc.scrollingElement || doc.documentElement;
+      if (root) {
+        root.scrollTop = Math.max(0, root.scrollTop + remaining);
+      }
+    }
+  }
+
+  function scrollParentOf(node, stopAt) {
+    var parent = node.parentElement;
+    while (parent && parent !== stopAt) {
+      var style = getComputedStyle(parent);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll')
+          && parent.scrollHeight > parent.clientHeight + 1) {
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+    return null;
+  }
+
+  var scrollPad = null;
+
+  // The settings scroller is often already at its maximum, leaving nowhere to
+  // scroll the search above the keyboard. Temporary bottom padding creates the
+  // missing room; it is removed as soon as the field loses focus or the
+  // keyboard closes.
+  function ensureScrollPadding(scroller, amount) {
+    if (!scrollPad || scrollPad.scroller !== scroller) {
+      clearScrollPadding();
+      scrollPad = {
+        scroller: scroller,
+        base: parseFloat(getComputedStyle(scroller).paddingBottom) || 0,
+        original: scroller.style.paddingBottom,
+        amount: 0
+      };
+    }
+    if (amount > scrollPad.amount + 1) {
+      scrollPad.amount = amount;
+      scroller.style.paddingBottom = (scrollPad.base + amount) + 'px';
+    }
+  }
+
+  function clearScrollPadding() {
+    if (!scrollPad) {
+      return;
+    }
+    scrollPad.scroller.style.paddingBottom = scrollPad.original;
+    scrollPad = null;
+  }
+
+  // Put a focused field in the upper part of the visible area so the keyboard
+  // cannot cover it. Uses visualViewport when the keyboard shrinks it.
+  function revealInput(input) {
+    if (!input || typeof input.getBoundingClientRect !== 'function') {
+      return;
+    }
+    var rect = input.getBoundingClientRect();
+    var viewport = window.visualViewport;
+    var top = viewport ? (viewport.offsetTop || 0) : 0;
+    var height = viewport ? viewport.height : (window.innerHeight || 0);
+    if (!height) {
+      return;
+    }
+    var keyboard = Math.max(0, (window.innerHeight || 0) - (top + height));
+
+    // The main library search sits in a dialog scroller that may already be at
+    // its end. Move it up (and the list below it into view) once the keyboard
+    // is open, adding temporary space only when the scroller cannot go further.
+    if (input.id === 'morphe-font-search' && keyboard > 60) {
+      var scroller = scrollParentOf(input, null);
+      if (scroller) {
+        var margin = 24;
+        var visibleBottom = top + height;
+        var move = Math.max(keyboard, rect.bottom - (visibleBottom - margin));
+        var target = scroller.scrollTop + move;
+        var scrollerRect = scroller.getBoundingClientRect();
+        var inputOffset = rect.top - scrollerRect.top + scroller.scrollTop;
+        // Never push the field above the top of its own scroller.
+        target = Math.min(target, Math.max(0, inputOffset - 8));
+        var max = scroller.scrollHeight - scroller.clientHeight;
+        if (target > max) {
+          ensureScrollPadding(scroller, target - max);
+        }
+        scroller.scrollTop = target;
+        return;
+      }
+    }
+
+    var targetTop = top + Math.max(16, height * 0.12);
+    var delta = rect.top - targetTop;
+    if (Math.abs(delta) >= 2) {
+      scrollParents(input, delta, input.closest('.morphe-font-modal'));
+    }
+  }
+
+  function setAddKeyboard(on) {
+    var section = topDocument().getElementById(SECTION_ID);
+    var overlay = section && section.querySelector('#' + ADD_DIALOG_ID);
+    if (!overlay) {
+      return;
+    }
+    if (on) {
+      overlay.classList.add('is-keyboard');
+    } else {
+      overlay.classList.remove('is-keyboard');
+    }
+  }
+
+  // The on-screen keyboard shrinks the visual viewport but not always the
+  // layout viewport, so a centered sheet can end up underneath it. Match the
+  // overlay to the visible area and keep a focused input in view.
+  function fitAddDialog() {
+    var section = topDocument().getElementById(SECTION_ID);
+    var overlay = section && section.querySelector('#' + ADD_DIALOG_ID);
+    var viewport = window.visualViewport;
+    if (!overlay || !viewport) {
+      return;
+    }
+    var sheet = overlay.querySelector('.morphe-font-modal-sheet');
+    if (!sheet) {
+      return;
+    }
+    overlay.style.top = (viewport.offsetTop || 0) + 'px';
+    overlay.style.bottom = 'auto';
+    overlay.style.height = viewport.height + 'px';
+    sheet.style.maxHeight = Math.max(160, viewport.height - 48) + 'px';
+
+    var active = topDocument().activeElement;
+    if (active && active.tagName === 'INPUT' && overlay.contains(active)) {
+      revealInput(active);
+    }
+  }
+
+  function onViewportChange() {
+    fitAddDialog();
+    var active = topDocument().activeElement;
+    var viewport = window.visualViewport;
+    var keyboard = viewport
+      ? (window.innerHeight || 0) - ((viewport.offsetTop || 0) + viewport.height)
+      : 0;
+    if (keyboard <= 60) {
+      clearScrollPadding();
+    } else if (active && (active.id === 'morphe-font-search'
+        || active.id === 'morphe-font-add-search')) {
+      revealInput(active);
+    }
+  }
+
+  function onDocumentFocus(event) {
+    var target = event.target;
+    if (!target || target.tagName !== 'INPUT') {
+      return;
+    }
+    if (target.id === 'morphe-font-add-search') {
+      setAddKeyboard(true);
+      fitAddDialog();
+    }
+    if (target.id === 'morphe-font-add-search' || target.id === 'morphe-font-search') {
+      revealInput(target);
+      // One follow-up after the keyboard animation; not a repeating timer.
+      setTimeout(function () {
+        revealInput(target);
+      }, 300);
+    }
+  }
+
+  function onDocumentBlur(event) {
+    var target = event.target;
+    if (!target) {
+      return;
+    }
+    if (target.id === 'morphe-font-add-search') {
+      setAddKeyboard(false);
+    }
+    if (target.id === 'morphe-font-add-search' || target.id === 'morphe-font-search') {
+      clearScrollPadding();
+    }
   }
 
   // Faces carry their absolute stored index; the array index can differ when a
@@ -1406,11 +1752,15 @@
       return;
     }
     editingId = id;
+    addDialog = '';
+    addQuery = '';
     syncSection();
   }
 
   function closeEditor() {
     editingId = '';
+    addDialog = '';
+    addQuery = '';
     syncSection();
   }
 
@@ -1421,14 +1771,7 @@
     }
   }
 
-  function mergeCurrent() {
-    var font = editingFont();
-    var section = topDocument().getElementById(SECTION_ID);
-    var select = section && section.querySelector('[data-merge-source]');
-    if (font && select && select.value) {
-      afterNative('mergeFont', font.id, select.value);
-    }
-  }
+
 
   function pickFace() {
     var font = editingFont();
@@ -1459,6 +1802,7 @@
       setStatus(section, statusText);
       renderList(section);
       renderEditor(section);
+      renderAddDialog(section);
     }
     apply();
   }
@@ -1556,8 +1900,55 @@
       return;
     }
 
-    if (target.closest('[data-face-upload]')) {
+    if (target.closest('[data-face-add]')) {
+      openAddDialog();
+      return;
+    }
+
+    if (target.closest('[data-add-upload]')) {
+      addDialog = '';
+      addQuery = '';
+      syncSection();
       pickFace();
+      return;
+    }
+
+    if (target.closest('[data-add-pick]')) {
+      addDialog = 'fonts';
+      addQuery = '';
+      syncSection();
+      return;
+    }
+
+    var addFont = target.closest('[data-add-font]');
+    if (addFont) {
+      var targetFont = editingFont();
+      var sourceId = addFont.getAttribute('data-add-font');
+      addDialog = '';
+      addQuery = '';
+      if (targetFont) {
+        afterNative('mergeFont', targetFont.id, sourceId);
+      } else {
+        syncSection();
+      }
+      return;
+    }
+
+    if (target.closest('[data-add-back]')) {
+      addDialog = 'options';
+      addQuery = '';
+      syncSection();
+      return;
+    }
+
+    if (target.closest('[data-add-cancel]')) {
+      closeAddDialog();
+      return;
+    }
+
+    var backdrop = target.closest('[data-add-backdrop]');
+    if (backdrop && !target.closest('.morphe-font-modal-sheet')) {
+      closeAddDialog();
       return;
     }
 
@@ -1569,11 +1960,6 @@
 
     if (target.closest('[data-detect]')) {
       detectCurrent();
-      return;
-    }
-
-    if (target.closest('[data-merge-add]')) {
-      mergeCurrent();
       return;
     }
 
@@ -1626,12 +2012,22 @@
     if (target.id === 'morphe-font-search') {
       searchQuery = (target.value || '').trim();
       renderList(topDocument().getElementById(SECTION_ID));
+      return;
+    }
+    if (target.id === 'morphe-font-add-search') {
+      addQuery = target.value || '';
+      fillAddFontList(topDocument().getElementById(SECTION_ID));
     }
   }
 
   function onDocumentKeydown(event) {
     var target = event.target;
     if (!target) {
+      return;
+    }
+    if (event.key === 'Escape' && addDialog) {
+      event.preventDefault();
+      closeAddDialog();
       return;
     }
     if (target.id === 'morphe-font-name-input') {
@@ -1669,6 +2065,13 @@
     doc.addEventListener('pointercancel', endSliderDrag, true);
     // load does not bubble, but the capture phase still reaches the document.
     doc.addEventListener('load', onFrameLoad, true);
+    doc.addEventListener('focus', onDocumentFocus, true);
+    doc.addEventListener('blur', onDocumentBlur, true);
+    // The keyboard changes the visual viewport, not the layout viewport, on
+    // some Android versions. Resize events are enough; no polling.
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onViewportChange);
+    }
   }
 
   function inject() {
@@ -1708,6 +2111,8 @@
       // transient filter and editor state with it.
       searchQuery = '';
       editingId = '';
+      addDialog = '';
+      addQuery = '';
       statusText = baseStatus();
       refreshHelper(doc);
       setTimeout(function () {
@@ -1719,6 +2124,7 @@
     setStatus(section, statusText);
     renderList(section);
     renderEditor(section);
+    renderAddDialog(section);
     wireEvents(doc);
   }
 
