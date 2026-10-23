@@ -8,14 +8,23 @@
   var ADD_DIALOG_ID = 'morphe-font-add-dialog';
   var ROOT_FLAG = 'data-morphe-font-root';
   var ROOT_SELECTOR = 'html[' + ROOT_FLAG + '][' + ROOT_FLAG + '][' + ROOT_FLAG + ']';
-  var FONT_RULE = ROOT_SELECTOR + ',' +
-    ROOT_SELECTOR + ' body,' +
-    ROOT_SELECTOR + ' body *{' +
-    'font-family:MorpheFont,serif !important}';
+  // Family and reading weight for the chapter text. b/strong keep a heavier
+  // weight than their surroundings instead of being flattened to the same one.
+  function fontRuleCss() {
+    return ROOT_SELECTOR + ',' +
+      ROOT_SELECTOR + ' body,' +
+      ROOT_SELECTOR + ' body *{' +
+      'font-family:MorpheFont,serif !important;' +
+      'font-weight:' + weight + ' !important}' +
+      ROOT_SELECTOR + ' b,' +
+      ROOT_SELECTOR + ' strong{' +
+      'font-weight:bolder !important}';
+  }
   var fontCss = '';
   var enabled = false;
   var hasFont = false;
   var fontName = '';
+  var weight = 400;
   var statusText = 'No font selected';
   var fonts = [];
   var selectedId = '';
@@ -312,6 +321,20 @@
     }
   }
 
+  function setWeightField(section) {
+    var select = section && section.querySelector('#morphe-font-weight');
+    if (!select) {
+      return;
+    }
+    var value = String(weight);
+    if (select.value !== value) {
+      select.value = value;
+    }
+    if (select.disabled !== !hasFont) {
+      select.disabled = !hasFont;
+    }
+  }
+
   function cssFormat(format) {
     return format === 'ttf' ? 'truetype'
       : format === 'otf' ? 'opentype' : format;
@@ -357,7 +380,7 @@
         "font-style:" + (face.italic ? 'italic' : 'normal') + ";" +
         "font-display:swap}";
     }
-    return css ? css + FONT_RULE : '';
+    return css ? css + fontRuleCss() : '';
   }
 
   function hasUsableFace(font) {
@@ -479,6 +502,9 @@
   function applyState(state) {
     if (!state || !Array.isArray(state.fonts)) {
       return false;
+    }
+    if (state.weight !== undefined && state.weight !== null) {
+      weight = clampWeight(state.weight, 400);
     }
     fonts = normalizeFonts(state.fonts);
     selectedId = state.selected ? String(state.selected) : '';
@@ -1702,12 +1728,37 @@
     var section = topDocument().getElementById(SECTION_ID);
     if (section) {
       setSwitch(section, enabled);
+      setWeightField(section);
       setStatus(section, statusText);
       renderList(section);
       renderEditor(section);
       renderAddDialog(section);
     }
     apply();
+  }
+
+  // Reading weight: rebuild the @font-face list plus the root rule, then
+  // persist the choice. Faces that do not cover the weight get synthesized by
+  // the browser, which is the expected behavior for a static family.
+  function setWeight(value) {
+    var next = clampWeight(value, weight);
+    if (next === weight) {
+      return;
+    }
+    weight = next;
+    var selected = findFont(selectedId);
+    if (selected && hasUsableFace(selected)) {
+      fontCss = fontCssFor(selected);
+    }
+    apply();
+    try {
+      var b = bridge();
+      if (b && typeof b.setWeight === 'function') {
+        b.setWeight(weight);
+      }
+    } catch (e) {
+      // The reader is already updated; persistence is best effort.
+    }
   }
 
   function pickFont() {
@@ -1881,6 +1932,11 @@
       return;
     }
 
+    if (target.id === 'morphe-font-weight') {
+      setWeight(parseInt(target.value, 10));
+      return;
+    }
+
     if (target.id === 'morphe-font-enabled') {
       enabled = hasFont && !!target.checked;
       try {
@@ -2039,7 +2095,7 @@
         '<div class="morphe-font-panel" role="dialog" aria-modal="true"' +
         ' aria-labelledby="morphe-font-panel-title">' +
         '<div class="morphe-font-panel-head">' +
-        '<h2 class="morphe-font-panel-title" id="morphe-font-panel-title">Custom Font</h2>' +
+        '<h2 class="morphe-font-panel-title" id="morphe-font-panel-title">Patch Settings</h2>' +
         '<button class="morphe-font-panel-close" type="button" data-font-close>Done</button>' +
         '</div>' +
         '<div class="morphe-font-panel-body"></div>' +
@@ -2082,6 +2138,7 @@
     }
 
     setSwitch(section, enabled);
+    setWeightField(section);
     setStatus(section, statusText);
     renderList(section);
     renderEditor(section);

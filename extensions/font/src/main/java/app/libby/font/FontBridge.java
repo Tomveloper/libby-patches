@@ -45,6 +45,7 @@ public final class FontBridge {
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_SELECTED = "selected";
     private static final String KEY_LIBRARY = "library";
+    private static final String KEY_WEIGHT = "weight";
 
     // Older builds stored exactly one font. These keys are migrated on first read.
     private static final String KEY_LEGACY_NAME = "font_name";
@@ -214,6 +215,27 @@ public final class FontBridge {
         } catch (Throwable t) {
             Log.e(TAG, "setEnabled failed", t);
         }
+    }
+
+    /**
+     * Reading weight applied to the chapter text. This is a user preference,
+     * not a property of any stored face, so it lives next to enabled/selected.
+     */
+    @JavascriptInterface
+    public String setWeight(int value) {
+        WebView view = webView.get();
+        if (view == null) {
+            return "{}";
+        }
+        Context context = view.getContext();
+        try {
+            prefs(context).edit()
+                    .putInt(KEY_WEIGHT, clampWeight(value))
+                    .apply();
+        } catch (Throwable t) {
+            Log.e(TAG, "setWeight failed", t);
+        }
+        return libraryStateJson(context);
     }
 
     /**
@@ -749,6 +771,7 @@ public final class FontBridge {
                 state.put("selected", selectedIsLive ? selected : "");
                 state.put("enabled", selectedIsLive
                         && prefs(context).getBoolean(KEY_ENABLED, false));
+                state.put("weight", clampWeight(prefs(context).getInt(KEY_WEIGHT, 400)));
                 state.put("fonts", items);
                 return state.toString();
             }
