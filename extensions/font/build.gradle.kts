@@ -31,9 +31,9 @@ val generateFontUi by tasks.registering {
 
             /** Generated from src/main/font-ui. Do not edit by hand. */
             public final class FontUiData {
-                public static final String HTML = ${html.toJavaLiteral()};
-                public static final String CSS = ${css.toJavaLiteral()};
-                public static final String JS = ${js.toJavaLiteral()};
+                public static final String HTML = ${html.toJavaExpression()};
+                public static final String CSS = ${css.toJavaExpression()};
+                public static final String JS = ${js.toJavaExpression()};
 
                 private FontUiData() {
                 }
@@ -47,6 +47,26 @@ android.sourceSets.getByName("main").java.srcDir(generatedFontUiDir)
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(generateFontUi)
+}
+
+fun String.toJavaExpression(): String {
+    // A JVM string constant is limited to 65535 bytes of modified UTF-8. The
+    // UI script grows with every feature, so emit large values as a chain of
+    // smaller literals that is concatenated at class-initialization time.
+    val maxChunk = 30000
+    if (length <= maxChunk) {
+        return toJavaLiteral()
+    }
+    val builder = StringBuilder("new StringBuilder()")
+    var index = 0
+    while (index < length) {
+        val end = minOf(index + maxChunk, length)
+        builder.append(".append(")
+            .append(substring(index, end).toJavaLiteral())
+            .append(")")
+        index = end
+    }
+    return builder.append(".toString()").toString()
 }
 
 fun String.toJavaLiteral(): String = buildString {

@@ -7,9 +7,11 @@ Instructions and context for anyone (human or AI) working in this repository.
 ## 1. Purpose
 
 This repo is based on the **Morphe patches template**. It contains a working
-font patch, `Custom reading font`, which adds a reader settings section for
-uploading a local font. The font is stored in the app's private storage and
-served locally through a shared request router.
+font patch, `Custom reading font`, which adds a **Patch Settings** sheet to the
+reader with a **Custom Font** section for uploading local fonts and choosing the
+reading weight. It is opened from a **Fonts** item in the reader nav bar. Fonts
+are stored in the app's private storage and served locally through a shared
+request router.
 
 - Target app: `com.overdrive.mobile.android.libby` ("Libby: Read Library Books")
 - Tested version: **9.5.0** (versionCode 950000)
@@ -44,9 +46,9 @@ The user is learning Android patching from scratch.
   observers that disconnect themselves) and avoid recurring timers.
 - Script/language coverage is not a current constraint; it depends on the font
   the user uploads.
-- Font selection happens in the in-app **Custom Font Settings** section. The
-  reader shows "No font selected" until one is uploaded. The picker uses
-  Android's native document picker, not an HTML file input.
+- Font selection happens in the in-app **Patch Settings** sheet, **Custom Font**
+  section. The reader shows "No font selected" until one is uploaded. The picker
+  uses Android's native document picker, not an HTML file input.
 
 ---
 
@@ -188,25 +190,28 @@ Working:
 - `jp1.shouldInterceptRequest` verified to begin with exactly one
   `MorpheWebRouter.intercept` call.
 - APK signed with the Morphe key (`CN=Morphe`), installed on device.
-- **Custom Font Settings** section appears in the reader.
-- Default state is "No font selected" with the toggle disabled.
+- A **Fonts** item appears in the reader nav bar next to Appearance and opens
+  the **Patch Settings** sheet.
+- The sheet is our own overlay, not Libby's Appearance dialog: it is anchored to
+  the visual viewport, takes 60% of the visible height, and scrolls internally.
+- Default state is "No font selected" with the toggle and weight selector
+  disabled.
 - Local font upload works through a native document picker (verified).
-- Uploaded font is copied atomically into private storage and streamed through
-  `/morphe/font/current?v=...`; there is no fixed size limit.
+- Fonts are copied atomically into private storage and streamed from
+  `/morphe/font/<id>/<face>?v=...`; there is no fixed size limit.
 - A 13.5 MB TTF was uploaded and applied successfully.
-- Font choice and on/off state persist across launches.
+- The font library supports multiple families and faces, search, per-face weight
+  ranges, and merging families.
+- Font choice, reading weight, and on/off state persist across launches.
 - The custom font applies to every same-origin chapter iframe.
-- The toggle survives the settings dialog being re-rendered.
 - The custom font wins over Libby's OpenDyslexic book-design rule.
 - Runtime behavior is event-driven: no `setInterval` and no recurring timers.
 
 Next steps, in order of preference:
 
-1. Optional: add a "Remove font" action that clears the stored file and returns
-   the reader to the "No font selected" state.
-2. Optional: add patch options only if a behavior needs to be configurable at
+1. Optional: add patch options only if a behavior needs to be configurable at
    patch time; font choice is already handled in-app.
-3. Housekeeping: optionally slim the extension DEX (it currently carries
+2. Housekeeping: optionally slim the extension DEX (it currently carries
    ~1,100 classes) and fill in the remaining `about { ... }` metadata.
 
 ---
@@ -286,32 +291,44 @@ The extension DEX should contain `MorpheWebRouter`, `FontBridge`, and
 
 ---
 
-## 8. How the font is stored and served
+## 8. How fonts are stored and served
 
-- The reader starts in the "No font selected" state with the toggle disabled.
+- The reader starts in the "No font selected" state with the toggle and the
+  reading-weight selector disabled.
 - Upload uses Android's native `ACTION_OPEN_DOCUMENT` picker. Libby's
   `WebChromeClient` does not implement `onShowFileChooser`, so an HTML file input
   would not work.
 - `FontBridge` streams the chosen content URI into a temporary file in
   `filesDir/morphe-fonts`, checks the first four bytes to detect WOFF2, WOFF,
-  TTF, or OTF, calls `fsync`, then renames the temp file to `custom.<format>`.
+  TTF, or OTF, calls `fsync`, then renames the temp file to
+  `<id>.<format>`; the id is generated per upload.
+- `FontFileMeta` then reads the `name`/OS2 weight table so a face can carry a
+  weight range. WOFF2 and collections cannot be parsed; they keep 400–400 and
+  can be corrected in the in-app weight editor.
 - Only after the rename succeeds does it update the `morphe_font` preferences:
-  `enabled`, `font_name`, `font_file`, `font_format`, and `font_version`.
-- The font is served at `/morphe/font/current?v=<version>` by
-  `MorpheWebRouter.stream(...)`, which returns a `WebResourceResponse` backed by
-  a `FileInputStream` and a `Content-Length` header.
-- The response uses `Cache-Control: no-store`. The `v` query changes after every
-  upload so the WebView does not reuse an old font.
+  `enabled`, `selected`, `library` (the JSON index of families and faces), and
+  `weight` (the reading weight).
+- Each face is served at
+  `/morphe/font/<id>/<face>?v=<version>` by `MorpheWebRouter.stream(...)`, which
+  returns a `WebResourceResponse` backed by a `FileInputStream` and a
+  `Content-Length` header.
+- The response uses `Cache-Control: no-store`. `v` changes when the family is
+  uploaded or edited so the WebView does not reuse an old font.
 - The file is streamed directly. There is no full-file byte array and no fixed
   size cap; the practical limit is free space in the app's private storage.
-- Uploading another font replaces `custom.<format>` and deletes the previous
-  font file after the new one is safely in place.
+- A new upload adds a family (or a face when started from a family's **Add
+  face** action). Deleting a family removes its files after the index is
+  updated. Merging moves every live face into the target family and deletes the
+  now-empty source entry.
+- The pre-multi-font keys `font_name`, `font_file`, `font_format`, and
+  `font_version` are read once and migrated into the library index, then
+  removed. Do not add new code that depends on them.
 
 ### Changing the font
 
-Upload a different WOFF2, WOFF, TTF, or OTF file in **Custom Font Settings**.
-No rebuild or re-patch is needed. The old file is deleted after the new one is
-saved. Large fonts do not increase DEX size because the font stays on disk.
+Upload a different WOFF2, WOFF, TTF, or OTF file in **Patch Settings → Custom
+Font**. No rebuild or re-patch is needed. Large fonts do not increase DEX size
+because the font stays on disk.
 
 ---
 
@@ -320,41 +337,68 @@ saved. Large fonts do not increase DEX size because the font stays on disk.
 `FontHook.onPageFinished` injects `FontUiData.JS`, then calls:
 
 ```text
-MorpheFont.init(fontCss, enabled, name, hasFont)
+MorpheFont.init(fontCss, enabled, name, hasFont, libraryJson)
 ```
 
-`fontCss` contains an `@font-face` rule pointing at the local
-`/morphe/font/current?v=...` URL, or an empty string when no font is stored.
+`fontCss` contains the `@font-face` rules for the active family's faces plus the
+root rule, or an empty string when no font is stored. `libraryJson` is the full
+library (`selected`, `enabled`, `weight`, `fonts[]`) so the sheet renders from
+the first frame without a second bridge call.
 
 Key points:
 
+- The nav item is a **clone of Libby's Appearance item** (`ensureNavButton`).
+  Cloning keeps the size, spacing, and halo styling without copying markup. The
+  clone gets id `morphe-font-nav-item`, the label text `Fonts`, the `Aa` glyph,
+  and its own direct `click` listener (`preventDefault` + `stopPropagation`)
+  that opens the sheet. `ensureNavButton` runs on init and on every reader
+  frame `load`, because Libby rebuilds the nav bar.
+- The sheet is **our own overlay**, not Libby's Appearance dialog:
+  `#morphe-font-overlay` contains a backdrop and `#morphe-font-panel` with the
+  title `Patch Settings` and the `#morphe-font-settings` section whose category
+  label is `Custom Font`. Further categories can be added inside the panel.
+- The overlay is transparent; only the backdrop and panel paint. Setting a
+  background on the overlay itself turns the whole reader black.
+- `fitSheet()` pins the overlay to the **visual viewport**:
+  `top = visualViewport.offsetTop`, `height = visualViewport.height`. The panel
+  takes 60% of that height with a 200 px floor, and its body scrolls
+  (`overflow-y:auto; min-height:0`). Libby's activity is `adjustPan`, so the
+  keyboard does not resize the layout viewport; CSS `vh`/`innerHeight` stay
+  unchanged while `visualViewport` shrinks and pans.
 - `controller.js` gets the section HTML and CSS from
   `MorpheFontBridge.getHtml()` / `getCss()`. Markup is not concatenated into the
   injected JavaScript.
-- When `hasFont` is false, the controller shows "No font selected", disables the
-  toggle, and clears any injected font style.
 - `FontBridge.install` registers the `font` namespace with `MorpheWebRouter`
   before the WebView loads a page. It also registers the JavaScript bridge.
 - `apply()` writes `<style id="morphe-font-dynamic">` into **every** same-origin
   iframe, not just the first one.
-- The style rule uses a repeated attribute selector
+- `fontRuleCss()` sets `font-family: MorpheFont, serif` and the chosen reading
+  weight on the root, body, and all descendants with `!important`; `b`/`strong`
+  get `font-weight: bolder` so emphasis is not flattened. The family rule uses a
+  repeated attribute selector
   (`html[data-morphe-font-root][data-morphe-font-root][data-morphe-font-root] ...`)
   so it outranks Libby's `html.RS-BIFOCAL * { font-family: ... !important }`
   OpenDyslexic rule.
-- Toggle and upload events are delegated from the top document in the **capture**
-  phase, so they keep working if Libby replaces the settings dialog's DOM.
+- The reading weight is a user preference, not a face property. `setWeight`
+  rebuilds `fontCss` for the selected family, re-applies, and persists through
+  `FontBridge.setWeight`. Browsers synthesize weights a static face does not
+  cover; variable fonts and families with real faces render natively.
+- UI events are listened to on `window` in the **capture** phase. The reader
+  stops propagation above our sheet, so overlay-local bubble listeners never
+  run (only native defaults such as the checkbox still worked). Capture on
+  `window` runs before any reader handler can swallow the event.
 - There is **no polling, no observer, and no recurring timer**. The controller
-  uses three listeners: capture `click`, capture `change`, and capture `load`.
-  Styling new/replaced chapter iframes is driven by the `load` listener;
-  `apply()` at init handles iframes that already exist.
-- Libby removes `.readability-dialog-sections` when the Appearance dialog closes,
-  and it stops the Appearance click before it bubbles. A capture-phase `click`
-  listener filters to the button whose `.nav-action-item-label` is `Appearance`.
-  The dialog is created after the event, so one `setTimeout(0)` inserts the
-  section. Multiple taps collapse into one pending injection.
-- Two one-shot timers remain and are not polling: the 0 ms injection defer and a
-  300 ms helper-style refresh after the section is first inserted.
-- `FontHook` returns early for the `libbyapp.com` shell and for `/chapter-` URLs.
+  uses capture listeners for `click`, `change`, `input`, `keydown`, `keyup`,
+  pointer events, and `focusin`; a capture `load` listener on the reader
+  document styles new/replaced chapter iframes, and `apply()` at init handles
+  iframes that already exist.
+- `visualViewport` `resize`/`scroll` listeners call `fitSheet`, so the sheet
+  tracks the keyboard.
+- Two one-shot timers remain and are not polling: a 50 ms defer in `onFocusIn`
+  (bring a just-focused field into view after the keyboard settles) and a 300 ms
+  helper-style refresh after the section is first inserted.
+- `FontHook` returns early for the `libbyapp.com` shell and for `/chapter-`
+  URLs.
 
 ---
 
@@ -366,15 +410,20 @@ Key points:
 | `Gradle requires JVM 17+ ... configured to use JVM 11` | Stale `JAVA_HOME`/PATH in that process | Use JDK 21; restart shell |
 | `UnsupportedClassVersionError ... class file version 65` | Ran Morphe jar with Java 11 | Run with JDK 21 |
 | `[7,83] Error for input ';': Invalid text` | `FontHook;;->` — extra `;` after a class descriptor | Descriptor is `L...;`; write `$EXTENSION_CLASS->method(...)` |
-| Reader freezes after opening settings | `MutationObserver` loop from rewriting `textContent` every callback | Write text/checked state only when the value changes; disarm the short-lived observer after injecting |
-| Battery drain / constant work while reading | `setInterval` polling for iframes and the dialog | Use capture-phase `load` events and one capture-phase click/change listener; no recurring timers |
-| Appearance click does not reach the document bubble listener | Libby stops propagation on its nav button | Listen in the capture phase and defer injection with one `setTimeout(0)` |
+| Reader freezes after opening settings | `MutationObserver` loop from rewriting `textContent` every callback | Write text/checked state only when the value changes; disarm any short-lived observer after injecting |
+| Battery drain / constant work while reading | `setInterval` polling for iframes and the dialog | Use capture-phase `load` events and capture-phase UI listeners; no recurring timers |
+| Sheet buttons do nothing, but the checkbox still toggles | The reader stops propagation above the overlay, so overlay-local bubble listeners never run | Listen on `window` in the capture phase |
+| Whole reader turns black when the sheet opens | The overlay itself had `background: Canvas` | Keep the overlay transparent; paint only the backdrop and panel |
+| Build fails with a constant-pool/UTF-8 limit | `controller.js` exceeded 65,535 bytes as one string literal | `toJavaExpression()` emits a `StringBuilder` chain of ≤30,000-char literals |
+| Sheet is hidden behind the keyboard | `adjustPan` keeps the layout viewport at full height | Anchor to `visualViewport` and re-fit on its `resize`/`scroll` |
+| Fonts nav item disappears after navigation | Libby rebuilds the nav bar | Re-run `ensureNavButton` on init and on reader frame `load` |
+| `<b>`/`<strong>` look the same as body text | The global `font-weight` rule flattened them | Add a `b`/`strong { font-weight: bolder !important }` rule |
 | Font only applies to the first chapter | `querySelector('iframe')` picks the first frame | Apply to every same-origin iframe |
 | OpenDyslexic overrides the custom font | Libby's `html.RS-BIFOCAL * { ... !important }` has higher specificity | Use the repeated `data-morphe-font-root` selector |
 | `appIconColor` exception | Passed `0xFF1F1F1F` (ARGB) | Use `0x1F1F1F` (`0xRRGGBB`) |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Different signing key | Uninstall the existing app first |
-| Reader always says "No font selected" | No uploaded file, failed upload, or prefs cleared | Upload a supported font; check the status text under the upload button |
-| `/morphe/font/current` returns 404 | Route not registered, or the stored file is missing | Ensure `FontBridge.install` ran and the `font_file` preference points at an existing file |
+| Reader always says "No font selected" | No uploaded family, failed upload, or the selected entry has no live file | Upload a supported font and check the status text in the section |
+| `/morphe/font/<id>/<face>` returns 404 | Route not registered, or that face's file is missing | Ensure `FontBridge.install` ran and the library index points at an existing file |
 | Libby's normal requests break after the router hook | Scratch register collided with a parameter register | Use `v0`; `addFreeRegisters` returns a move count, not a register number |
 | Build error about `extensions/libby.mpe` | Extension output still named `extensions/font.mpe` | Keep `extension { name = "extensions/libby.mpe" }` |
 | Font does not change | Script not injected, route not registered, or CSS override | Enable WebView debugging and inspect with `chrome://inspect` |
@@ -397,6 +446,13 @@ a log. Capture the full output or use `Select-String` for the error line.
   fonts into a string or a full-file byte array in Java or JavaScript.
 - Runtime code must not poll. Prefer event-driven hooks; disconnect observers and
   clear one-shot timers when their job is done.
+- Runtime UI listens on the reader `window` in the capture phase; do not attach
+  listeners to the overlay and expect them to fire.
+- Anchor fixed UI to `window.visualViewport`, never to `innerHeight` or `vh`, so
+  it survives the keyboard.
+- Large generated strings (the UI script) must go through `toJavaExpression()` in
+  `extensions/font/build.gradle.kts`; a single string constant caps at 65,535
+  bytes.
 - Fingerprints must avoid obfuscated names. Prefer framework method names,
   signatures, and stable string literals.
 - A fingerprint that matches zero or multiple methods aborts the patch; that is
@@ -407,7 +463,60 @@ a log. Capture the full output or use `Select-String` for the error line.
 
 ---
 
-## 12. Glossary
+## 12. Commit messages and releases
+
+Releases are automated with **semantic-release**. `.releaserc` reads commit
+headers, so the type you pick decides whether a release happens and how the
+version moves. There is no commit linter: a wrong type silently produces the
+wrong version instead of failing.
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
+type(scope): lowercase imperative summary
+```
+
+- `type` is required and lowercase; `scope` is optional and lowercase.
+- Keep the header under ~72 characters and explain the why in the body.
+- One logical change per commit.
+- The only scope the release rules match is `Needs bump`, and only with
+  `build`.
+
+| Type | Release | Changelog section | Use for |
+|---|---|---|---|
+| `feat` | minor | ✨ New Features | New user-visible behavior |
+| `fix` | patch | 🐛 Bug Fixes | Incorrect behavior |
+| `perf` | patch | 🔧 Improvements | Performance or battery work |
+| `bump` | patch | 🚀 Updated App Support | Adding or updating an app version in `Constants.kt` |
+| `build` | none | hidden | Build tooling; `build(Needs bump): ...` is a patch |
+| `docs` | none | — | Documentation |
+| `chore` | none | — | Housekeeping, dependencies, releases |
+| `refactor` | none | — | No behavior change |
+| `test` | none | — | Tests |
+
+- `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer still forces a major
+  release. Do not use it for internal rewrites.
+- Non-releasing commits still run the compile check, but publish no bundle.
+
+Do not hand-edit release outputs: `CHANGELOG.md`, `gradle.properties`,
+`patches-bundle.json`, `patches-list.json`, or the generated table in
+`README.md`. semantic-release writes them in a
+`chore: Release vX.Y.Z [skip ci]` commit; keep `[skip ci]` so that commit does
+not start another run.
+
+Flow:
+
+1. Commit on `dev` with a conventional message.
+2. A push to `dev` opens or updates the automated `dev` → `main` PR
+   (`chore: Merge branch dev to main`).
+3. Merging to `main` runs `.github/workflows/release.yml`: semantic-release
+   derives the version from the commits since the last tag, publishes the
+   bundle, updates the release outputs above, then backmerges `main` into
+   `dev`.
+
+---
+
+## 13. Glossary
 
 - **APK** — Android app package (a zip with DEX code, resources, manifest, signature).
 - **DEX** — Android bytecode format, executed by ART.
@@ -426,3 +535,7 @@ a log. Capture the full output or use `Select-String` for the error line.
   `InputStream`; the file is not loaded into a string or byte array.
 - **WOFF2** - compressed web font format supported by Chromium/WebView.
 - **same-origin iframe** - child document reachable via `contentDocument`.
+- **visual viewport** - the part of the page actually visible above the
+  keyboard; `window.visualViewport` reports its offset and height.
+- **reading weight** - the `font-weight` applied to chapter text, stored as one
+  user preference rather than as a property of a specific face.
