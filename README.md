@@ -11,7 +11,9 @@ with a **Custom Font** section:
 - Upload local WOFF2, WOFF, TTF, or OTF fonts, and keep several families and
   faces.
 - The reader shows **No font selected** until you upload one.
-- Choose the **reading weight** used for chapter text.
+- Choose the **reading weight** used for chapter text, or leave it on
+  **Default** to keep the app's own weight settings. The weight also applies
+  while the custom font is off.
 - The font is copied into the app's private storage and streamed locally through
   a shared `/morphe/` request router. No remote font URL, no network request, and
   no fixed file-size limit.
@@ -25,13 +27,21 @@ additional `/morphe/` routes without adding another hook.
 
 Tested with Libby **9.5.0** (versionCode `950000`).
 
+Click the button below, or manually add this repo url to Morphe Manager: https://github.com/Tomveloper/libby-patches
+
+<a href="https://morphe.software/add-source?github=Tomveloper/libby-patches">
+  <img src=".github/assets/add-to-morphe.svg" alt="Add to Morphe" height="48">
+</a>
+
 ## Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.1.0](https://github.com/Tomveloper/libby-patches/releases/tag/v1.1.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+> **[v1.2.0-dev.1](https://github.com/Tomveloper/libby-patches/releases/tag/v1.2.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
 <summary>📦 Libby: Read Library Books&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
+
+**Package name:** `com.overdrive.mobile.android.libby`
 
 **🎯 Supported versions:**
 

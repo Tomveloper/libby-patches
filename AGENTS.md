@@ -379,8 +379,10 @@ Key points:
   (`html[data-morphe-font-root][data-morphe-font-root][data-morphe-font-root] ...`)
   so it outranks Libby's `html.RS-BIFOCAL * { font-family: ... !important }`
   OpenDyslexic rule.
-- The reading weight is a user preference, not a face property. `setWeight`
-  rebuilds `fontCss` for the selected family, re-applies, and persists through
+- The reading weight is a user preference, not a face property, and is stored
+  as `0` for "Default". A non-zero weight emits its own rule independently of
+  the custom font, so it also restyles Libby's own font; `Default` emits no
+  weight rule at all. `setWeight` re-applies and persists through
   `FontBridge.setWeight`. Browsers synthesize weights a static face does not
   cover; variable fonts and families with real faces render natively.
 - UI events are listened to on `window` in the **capture** phase. The reader

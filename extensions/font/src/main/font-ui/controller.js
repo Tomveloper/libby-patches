@@ -8,13 +8,26 @@
   var ADD_DIALOG_ID = 'morphe-font-add-dialog';
   var ROOT_FLAG = 'data-morphe-font-root';
   var ROOT_SELECTOR = 'html[' + ROOT_FLAG + '][' + ROOT_FLAG + '][' + ROOT_FLAG + ']';
-  // Family and reading weight for the chapter text. b/strong keep a heavier
-  // weight than their surroundings instead of being flattened to the same one.
-  function fontRuleCss() {
+  // Family rule: swaps in the uploaded font without touching weight. The
+  // reading weight is a separate, optional rule so "Default" can leave the
+  // app's own typography (including bold emphasis) alone.
+  function familyRuleCss() {
     return ROOT_SELECTOR + ',' +
       ROOT_SELECTOR + ' body,' +
       ROOT_SELECTOR + ' body *{' +
-      'font-family:MorpheFont,serif !important;' +
+      'font-family:MorpheFont,serif !important}';
+  }
+
+  // Weight rule: applied whether or not the custom font is on, because the
+  // selector also drives the app's own font. b/strong keep a heavier weight
+  // than their surroundings instead of being flattened to the same one.
+  function weightRuleCss() {
+    if (!hasWeight()) {
+      return '';
+    }
+    return ROOT_SELECTOR + ',' +
+      ROOT_SELECTOR + ' body,' +
+      ROOT_SELECTOR + ' body *{' +
       'font-weight:' + weight + ' !important}' +
       ROOT_SELECTOR + ' b,' +
       ROOT_SELECTOR + ' strong{' +
@@ -24,7 +37,8 @@
   var enabled = false;
   var hasFont = false;
   var fontName = '';
-  var weight = 400;
+  // 0 means "Default": no weight rule is emitted, so the app decides.
+  var weight = 0;
   var statusText = 'No font selected';
   var fonts = [];
   var selectedId = '';
@@ -74,6 +88,12 @@
     return '';
   }
 
+  // The custom family and the reading weight are independent: a weight can be
+  // applied to the app's own font while the custom family is off.
+  function activeCss() {
+    return (enabled && hasFont ? fontCss : '') + weightRuleCss();
+  }
+
   function applyTo(doc) {
     if (!doc || !doc.head) {
       return;
@@ -87,7 +107,7 @@
       style.id = 'morphe-font-dynamic';
       doc.head.appendChild(style);
     }
-    var next = enabled && hasFont ? fontCss : '';
+    var next = activeCss();
     if (style.textContent !== next) {
       style.textContent = next;
     }
@@ -326,12 +346,13 @@
     if (!select) {
       return;
     }
+    // Always enabled: the weight applies to the app's own font too.
+    if (select.disabled) {
+      select.disabled = false;
+    }
     var value = String(weight);
     if (select.value !== value) {
       select.value = value;
-    }
-    if (select.disabled !== !hasFont) {
-      select.disabled = !hasFont;
     }
   }
 
@@ -357,6 +378,20 @@
     return Math.max(1, Math.min(1000, Math.round(n)));
   }
 
+  // Reading weight: 0 (or less) is "Default" and emits no rule. Positive
+  // values keep the 1..1000 clamp used by faces.
+  function parseWeight(value, fallback) {
+    var n = typeof value === 'number' ? value : parseInt(value, 10);
+    if (!isFinite(n)) {
+      return fallback;
+    }
+    return n <= 0 ? 0 : clampWeight(n, fallback);
+  }
+
+  function hasWeight() {
+    return weight > 0;
+  }
+
   // One @font-face per face, with the descriptor taken from the pair of
   // weights. A variable face therefore contributes a real range instead of
   // being treated as a single 400 face with browser-synthesized bold.
@@ -380,7 +415,7 @@
         "font-style:" + (face.italic ? 'italic' : 'normal') + ";" +
         "font-display:swap}";
     }
-    return css ? css + fontRuleCss() : '';
+    return css ? css + familyRuleCss() : '';
   }
 
   function hasUsableFace(font) {
@@ -504,7 +539,7 @@
       return false;
     }
     if (state.weight !== undefined && state.weight !== null) {
-      weight = clampWeight(state.weight, 400);
+      weight = parseWeight(state.weight, 0);
     }
     fonts = normalizeFonts(state.fonts);
     selectedId = state.selected ? String(state.selected) : '';
@@ -1737,19 +1772,15 @@
     apply();
   }
 
-  // Reading weight: rebuild the @font-face list plus the root rule, then
-  // persist the choice. Faces that do not cover the weight get synthesized by
-  // the browser, which is the expected behavior for a static family.
+  // Reading weight: persist the choice and re-apply. Faces that do not cover
+  // the weight get synthesized by the browser, which is the expected behavior
+  // for a static family. Default (0) removes the weight rule entirely.
   function setWeight(value) {
-    var next = clampWeight(value, weight);
+    var next = parseWeight(value, weight);
     if (next === weight) {
       return;
     }
     weight = next;
-    var selected = findFont(selectedId);
-    if (selected && hasUsableFace(selected)) {
-      fontCss = fontCssFor(selected);
-    }
     apply();
     try {
       var b = bridge();
