@@ -1,3 +1,9 @@
+## [1.2.0-dev.1](https://github.com/Tomveloper/libby-patches/compare/v1.1.0...v1.2.0-dev.1) (2026-11-01)
+
+### ✨ New Features
+
+* separate font weight from font family, increasing customizability ([bf56610](https://github.com/Tomveloper/libby-patches/commit/bf5661077cf8195db3fe69c427533b05aa52e210))
+
 ## [1.1.0](https://github.com/Tomveloper/libby-patches/compare/v1.0.0...v1.1.0) (2026-10-23)
 
 ### 🐛 Bug Fixes
