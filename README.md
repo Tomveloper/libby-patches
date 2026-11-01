@@ -27,6 +27,12 @@ additional `/morphe/` routes without adding another hook.
 
 Tested with Libby **9.5.0** (versionCode `950000`).
 
+Click the button below, or manually add this repo url to Morphe Manager: https://github.com/Tomveloper/libby-patches
+
+<a href="https://morphe.software/add-source?github=Tomveloper/libby-patches">
+  <img src=".github/assets/add-to-morphe.svg" alt="Add to Morphe" height="48">
+</a>
+
 ## Patches list
 
 <!-- PATCHES_START EXPANDED -->
