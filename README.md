@@ -11,7 +11,9 @@ with a **Custom Font** section:
 - Upload local WOFF2, WOFF, TTF, or OTF fonts, and keep several families and
   faces.
 - The reader shows **No font selected** until you upload one.
-- Choose the **reading weight** used for chapter text.
+- Choose the **reading weight** used for chapter text, or leave it on
+  **Default** to keep the app's own weight settings. The weight also applies
+  while the custom font is off.
 - The font is copied into the app's private storage and streamed locally through
   a shared `/morphe/` request router. No remote font URL, no network request, and
   no fixed file-size limit.
