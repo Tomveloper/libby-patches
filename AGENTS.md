@@ -220,18 +220,12 @@ Next steps, in order of preference:
 
 1. Optional: add patch options only if a behavior needs to be configurable at
    patch time; font choice is already handled in-app.
-2. Housekeeping: fill in the remaining `about { ... }` metadata. The extension
-   DEX is now only ~45 classes after the template's R8 rules, so the old
-   slimming task is done.
-3. Replace the deprecated `bytecodePatch(...)` builder in `FontPatch.kt`,
-   `WebRoutesPatch.kt`, and `WebViewDebugPatch.kt` with `patch(...)`, the
-   patcher 2.6.0 replacement that handles both bytecode and resources. The
-   build warnings identify the three call sites.
-4. Revamp `ActivityResultFingerprint`'s layer 2 (the body filter) so it no
-   longer hardcodes the obfuscated activity-result dispatcher class
-   (`Lq33;` in 9.6.0). Find that class by stable traits instead; the current
-   name changes every release, so the fingerprint breaks on each bump. Do this
-   only after the 9.6.0 patch is verified on device.
+2. Decide what to do with the template's AI issue-triage workflow: its setup URL
+   points at the template README, and the `OPENROUTER_API_KEY` secret is not
+   configured here.
+3. Keep fingerprints and builders current when Libby is updated. The
+   version-specific dispatcher and exact access-flag checks are gone, and
+   `patch()` has replaced the deprecated `bytecodePatch()`.
 
 ---
 
@@ -373,10 +367,12 @@ because the font stays on disk.
 MorpheFont.init(fontCss, enabled, name, hasFont, libraryJson)
 ```
 
-`fontCss` contains the `@font-face` rules for the active family's faces plus the
-root rule, or an empty string when no font is stored. `libraryJson` is the full
-library (`selected`, `enabled`, `weight`, `fonts[]`) so the sheet renders from
-the first frame without a second bridge call.
+`fontCss` contains one `@font-face` rule for the currently active face plus the
+root font-family rule, or an empty string when no font is stored. The family's
+other faces live in the in-app library, but only the active one is emitted into
+the page. `libraryJson` is the full library (`selected`, `enabled`, `weight`,
+`fonts[]`) so the sheet renders from the first frame without a second bridge
+call.
 
 Key points:
 
@@ -460,7 +456,7 @@ Key points:
 | Reader always says "No font selected" | No uploaded family, failed upload, or the selected entry has no live file | Upload a supported font and check the status text in the section |
 | `/morphe/font/<id>/<face>` returns 404 | Route not registered, or that face's file is missing | Ensure `FontBridge.install` ran and the library index points at an existing file |
 | Libby's normal requests break after the router hook | Scratch register collided with a parameter register | Use `v0`; `addFreeRegisters` returns a move count, not a register number |
-| Build error about `extensions/libby.mpe` | Extension output still named `extensions/font.mpe` | Keep `extension { name = "extensions/libby.mpe" }` |
+| Build error about `extensions/libby.mpe` | `name` in `extension { }` no longer matches `extendWith("extensions/libby.mpe")` | Keep `name = "extensions/libby.mpe"`; the physical DEX is generated under `extensions/font/build/morphe/extensions/` |
 | Font does not change | Script not injected, route not registered, or CSS override | Enable WebView debugging and inspect with `chrome://inspect` |
 
 PowerShell tip: `| Select-Object -Last 40` can hide the real error at the top of
