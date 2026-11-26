@@ -1,3 +1,9 @@
+## [1.2.0-dev.3](https://github.com/Tomveloper/libby-patches/compare/v1.2.0-dev.2...v1.2.0-dev.3) (2026-11-26)
+
+### 🐛 Bug Fixes
+
+* **Libby:** replace version-specific activity fingerprint ([67e79cc](https://github.com/Tomveloper/libby-patches/commit/67e79cc534798e20f52d0ee4630c3fb126893971))
+
 ## [1.2.0-dev.2](https://github.com/Tomveloper/libby-patches/compare/v1.2.0-dev.1...v1.2.0-dev.2) (2026-11-26)
 
 ### 🚀 Updated App Support
