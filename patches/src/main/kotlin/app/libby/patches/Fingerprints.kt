@@ -3,7 +3,6 @@ package app.libby.patches
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.string
-import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
@@ -21,7 +20,7 @@ object WebViewClientOnPageFinishedFingerprint : Fingerprint(
     name = "onPageFinished",
     returnType = "V",
     parameters = listOf("Landroid/webkit/WebView;", "Ljava/lang/String;"),
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    isStatic = false,
     filters = listOf(string("onPageFinished - ")),
 )
 
@@ -37,7 +36,7 @@ object WebViewClientShouldInterceptRequestFingerprint : Fingerprint(
     name = "shouldInterceptRequest",
     returnType = "Landroid/webkit/WebResourceResponse;",
     parameters = listOf("Landroid/webkit/WebView;", "Landroid/webkit/WebResourceRequest;"),
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    isStatic = false,
 )
 
 /**
@@ -78,7 +77,7 @@ object AuthWebViewFragmentFingerprint : Fingerprint(
         "Landroid/view/ViewGroup;",
         "Landroid/os/Bundle;",
     ),
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    isStatic = false,
     filters = listOf(
         methodCall(
             definingClass = "Landroid/webkit/WebView;",
@@ -102,7 +101,7 @@ object ActivityResultFingerprint : Fingerprint(
     name = "onActivityResult",
     returnType = "V",
     parameters = listOf("I", "I", "Landroid/content/Intent;"),
-    accessFlags = listOf(AccessFlags.PUBLIC),
+    isStatic = false,
     custom = { method, _ ->
         method.implementation?.instructions?.any { instruction ->
             if (instruction.opcode != Opcode.INVOKE_SUPER) return@any false
