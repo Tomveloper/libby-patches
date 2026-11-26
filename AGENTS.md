@@ -14,7 +14,8 @@ are stored in the app's private storage and served locally through a shared
 request router.
 
 - Target app: `com.overdrive.mobile.android.libby` ("Libby: Read Library Books")
-- Tested version: **9.5.0** (versionCode 950000)
+- Target version: whatever is pinned in `Constants.kt` (currently **9.6.0**,
+  versionCode 960000, as of this writing)
 - APK type: universal APK (not APKM/XAPK)
 - Device is **not rooted**; installation is a normal user install of a re-signed APK.
 
@@ -58,9 +59,9 @@ The user is learning Android patching from scratch.
 |---|---|
 | Repo | `<repo>` (this checkout) |
 | Work APKs / decompiled app | `<work-dir>` |
-| Stock input APK | `<work-dir>\libby-9.5.0.apk` (SHA-1 `3FDC25DA786FE17D2A9FA668E1DD978B4FB042E5`) |
-| Patched output | `<work-dir>\libby-patched.apk` |
-| Morphe CLI jar | `<tools>\morphe-desktop-1.19.0-all.jar` |
+| Stock input APK | `dev\tools\libby-<version>.apk` (currently `libby-9.6.0.apk`; hash in `dev\tools\README.md`) |
+| Patched output | `build\libby-patched.apk` |
+| Morphe CLI jar | `dev\tools\morphe-desktop-<version>-all.jar` (currently 2.4.0) |
 | JDK | JDK 21 |
 | Android SDK | `%LOCALAPPDATA%\Android\Sdk` |
 | Build tools | `%LOCALAPPDATA%\Android\Sdk\build-tools\36.0.0` |
@@ -74,11 +75,16 @@ Notes:
   JDK 11, its environment is stale — restart the shell; do not prefix every
   command.
 - `ANDROID_HOME` and `JAVA_HOME` are set at user level.
+- Morphe 2.4.0 resolves its data root next to the jar, so the live signing key
+  is `dev\tools\morphe-data\morphe.keystore`. A backup is
+  `dev\tools\morphe.keystore`; see `dev\tools\README.md` for hashes.
 - `local.properties` contains the machine-specific `sdk.dir`. **Do not commit it.**
 - Gradle credentials for the Morphe registry, if needed, come from user-level
   Gradle properties or the CI environment. **Never print or commit them.**
-- Toolchain: Morphe Desktop **1.19.0** (bundles Morphe Patcher **2.0.0**), Gradle
-  plugin `app.morphe.patches` **2.0.0**. This repo is based on
+- Toolchain versions are pinned in `settings.gradle.kts` and
+  `gradle/libs.versions.toml`; those files are authoritative. As of this
+  writing: Morphe Desktop 2.4.0 (patcher 2.6.0), Gradle 9.9.1, plugin 2.1.2,
+  smali `5a5249e22f`. This repo is based on
   `MorpheApp/morphe-patches-template`. `upstream` points at the template and
   `origin` points at your own repository, so toolchain and boilerplate updates
   (`libs.versions.toml`, `settings.gradle.kts`, `PatchListGenerator.kt`, CI
@@ -109,8 +115,9 @@ extensions/font/
   src/main/java/app/libby/web/
     MorpheWebRouter.java                  /morphe/ prefix, route registry, streaming
 
-patches/build/libs/patches-1.0.0.mpp     built patch bundle (distributable)
-extensions/libby.mpe                       built extension DEX container
+patches/build/libs/patches-<version>.mpp     built patch bundle (distributable)
+extensions/font/build/morphe/extensions/libby.mpe
+                                           built extension DEX container
 ```
 
 The template sample packages (`example/` and `shared/`) and the
@@ -186,8 +193,10 @@ CSS cannot cross a document boundary, so the injected JS reaches into
 
 Working:
 
-- Patch build and apply cleanly.
-- `jp1.shouldInterceptRequest` verified to begin with exactly one
+- Patch build and apply cleanly. Verified on Libby 9.6.0: `buildAndroid`
+  (including `checkAndroidApi`), patch apply, and signature. The extension DEX
+  is now 45 classes after the template's R8 rules.
+- `tq1.shouldInterceptRequest` verified to begin with exactly one
   `MorpheWebRouter.intercept` call.
 - APK signed with the Morphe key (`CN=Morphe`), installed on device.
 - A **Fonts** item appears in the reader nav bar next to Appearance and opens
@@ -211,8 +220,18 @@ Next steps, in order of preference:
 
 1. Optional: add patch options only if a behavior needs to be configurable at
    patch time; font choice is already handled in-app.
-2. Housekeeping: optionally slim the extension DEX (it currently carries
-   ~1,100 classes) and fill in the remaining `about { ... }` metadata.
+2. Housekeeping: fill in the remaining `about { ... }` metadata. The extension
+   DEX is now only ~45 classes after the template's R8 rules, so the old
+   slimming task is done.
+3. Replace the deprecated `bytecodePatch(...)` builder in `FontPatch.kt`,
+   `WebRoutesPatch.kt`, and `WebViewDebugPatch.kt` with `patch(...)`, the
+   patcher 2.6.0 replacement that handles both bytecode and resources. The
+   build warnings identify the three call sites.
+4. Revamp `ActivityResultFingerprint`'s layer 2 (the body filter) so it no
+   longer hardcodes the obfuscated activity-result dispatcher class
+   (`Lq33;` in 9.6.0). Find that class by stable traits instead; the current
+   name changes every release, so the fingerprint breaks on each bump. Do this
+   only after the 9.6.0 patch is verified on device.
 
 ---
 
@@ -225,24 +244,31 @@ cd <repo>
 .\gradlew.bat buildAndroid
 ```
 
-Produces `patches\build\libs\patches-1.0.0.mpp`.
+Produces a versioned `patches-<version>.mpp` in `patches\build\libs\`.
 
 ### List patches (sanity check)
 
+In the commands below, `<jar>`, `<bundle>`, and `<apk>` mean the actual files
+currently in `dev/tools/` and `patches/build/libs/`; see `dev/tools/README.md`.
+
 ```powershell
-java -jar <tools>\morphe-desktop-1.19.0-all.jar `
-  list-patches --patches patches\build\libs\patches-1.0.0.mpp -v -p
+java -jar dev\tools\<jar> `
+  list-patches --patches patches\build\libs\<bundle> -v -p
 ```
 
 Note the CLI inconsistency: `list-patches` uses `--patches`, `patch` uses `-p`.
 
+Newer command-line tools deprecate `sdkmanager` in favour of the `android` CLI
+(`android sdk ...`). The SDK is already installed on this machine, so the
+normal build and patch flow does not need either tool.
+
 ### Apply the patch
 
 ```powershell
-java -jar <tools>\morphe-desktop-1.19.0-all.jar patch `
-  -p <repo>\patches\build\libs\patches-1.0.0.mpp `
-  -o <work-dir>\libby-patched.apk `
-  <work-dir>\libby-9.5.0.apk
+java -jar dev\tools\<jar> patch `
+  -p patches\build\libs\<bundle> `
+  -o build\libby-patched.apk `
+  dev\tools\<apk>
 ```
 
 Flags: `patch` = subcommand, `-p` = patch bundle, `-o` = output APK,
@@ -472,13 +498,29 @@ headers, so the type you pick decides whether a release happens and how the
 version moves. There is no commit linter: a wrong type silently produces the
 wrong version instead of failing.
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+**Always use [Conventional Commits](https://www.conventionalcommits.org/):**
 
 ```text
 type(scope): lowercase imperative summary
 ```
 
-- `type` is required and lowercase; `scope` is optional and lowercase.
+Only four types produce release-note sections, and each maps to exactly one:
+
+| Type | Release-note section |
+|---|---|
+| `feat:` | ✨ New Features |
+| `perf:` | 🔧 Improvements |
+| `fix:` | 🐛 Bug Fixes |
+| `bump:` | 🚀 Updated App Support |
+
+Everything else uses the remaining Conventional Commits types — `build:`,
+`chore:`, `ci:`, `docs:`, `style:`, `refactor:`, and `test:` — and appears in no
+release notes.
+
+- `type` is required and lowercase. When a change is specific to an app, put
+  that app in the scope as a proper noun: `bump(Libby): support 9.6.0`,
+  `feat(Libby): add a font weight selector`. Leave the scope off only for
+  changes that are not about one app (build tooling, CI, repo-wide docs).
 - Keep the header under ~72 characters and explain the why in the body.
 - One logical change per commit.
 - The only scope the release rules match is `Needs bump`, and only with
@@ -489,11 +531,13 @@ type(scope): lowercase imperative summary
 | `feat` | minor | ✨ New Features | New user-visible behavior |
 | `fix` | patch | 🐛 Bug Fixes | Incorrect behavior |
 | `perf` | patch | 🔧 Improvements | Performance or battery work |
-| `bump` | patch | 🚀 Updated App Support | Adding or updating an app version in `Constants.kt` |
+| `bump` | patch | 🚀 Updated App Support | Adding or updating an app version in `Constants.kt`; write `bump(Libby): support <version>` |
 | `build` | none | hidden | Build tooling; `build(Needs bump): ...` is a patch |
+| `ci` | none | — | CI configuration and workflows |
 | `docs` | none | — | Documentation |
 | `chore` | none | — | Housekeeping, dependencies, releases |
 | `refactor` | none | — | No behavior change |
+| `style` | none | — | Formatting/whitespace only; no behavior change |
 | `test` | none | — | Tests |
 
 - `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer still forces a major

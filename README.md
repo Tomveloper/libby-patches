@@ -25,7 +25,9 @@ The font patch depends on an internal **Shared web routes** patch. That patch
 installs one `shouldInterceptRequest` hook, and other patches can register
 additional `/morphe/` routes without adding another hook.
 
-Tested with Libby **9.5.0** (versionCode `950000`).
+Supported Libby versions are listed in the generated table below. As of this
+writing the target is **9.6.0** (versionCode `960000`); `Constants.kt` is the
+authoritative source.
 
 Click the button below, or manually add this repo url to Morphe Manager: https://github.com/Tomveloper/libby-patches
 
@@ -58,24 +60,36 @@ Click the button below, or manually add this repo url to Morphe Manager: https:/
 
 <!-- PATCHES_END -->
 
+The table above is generated from `patches-list.json` at release time. Change
+`Constants.kt` and let semantic-release refresh it rather than editing it here.
+
 ## Building locally
 
-Build the patch bundle:
+Needs JDK 21 and an Android SDK with the platform and build-tools versions
+required by the Morphe Gradle plugin (platform 36 / build-tools 36.0.0 as of
+this writing) at `%LOCALAPPDATA%\Android\Sdk`. Local-only binaries live in
+`dev/tools/`.
+
+Versions change with every release. The placeholders below mean:
+
+- `<jar>` — the Morphe desktop jar in `dev/tools/` (e.g.
+  `morphe-desktop-2.4.0-all.jar` as of this writing)
+- `<bundle>` — the newest `patches-<version>.mpp` in `patches/build/libs/`
+- `<apk>` — the stock Libby APK in `dev/tools/` (e.g. `libby-9.6.0.apk` as of
+  this writing)
 
 ```powershell
 .\gradlew.bat buildAndroid
+
+java -jar dev\tools\<jar> patch `
+  -p patches\build\libs\<bundle> `
+  -o build\libby-patched.apk `
+  dev\tools\<apk>
 ```
 
-The bundle is written to `patches\build\libs\patches-1.0.0.mpp`.
-
-Apply it with Morphe Desktop or the Morphe CLI:
-
-```powershell
-java -jar morphe-desktop-1.19.0-all.jar patch `
-  -p patches\build\libs\patches-1.0.0.mpp `
-  -o libby-patched.apk `
-  libby-9.5.0.apk
-```
+Morphe keeps its data root next to the jar, so the signing key must be at
+`dev\tools\morphe-data\morphe.keystore`. See `dev\tools\README.md` for the
+current file names and hashes.
 
 Add `-e "Enable WebView debugging"` to include the optional WebView debugging
 patch.
