@@ -38,26 +38,11 @@ Click the button below, or manually add this repo url to Morphe Manager: https:/
 ## Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.2.0-dev.1](https://github.com/Tomveloper/libby-patches/releases/tag/v1.2.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
-<details open>
-<summary>📦 Libby: Read Library Books&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
-<br>
+> **[v1.2.0-dev.2](https://github.com/Tomveloper/libby-patches/releases/tag/v1.2.0-dev.2)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**3 patches** across **1 app**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
-**Package name:** `com.overdrive.mobile.android.libby`
-
-**🎯 Supported versions:**
-
-| 9.5.0 |
-| :---: |
-
-| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
-|----------|----------------|-----------|
-| [Custom reading font](#custom-reading-font) | Renders book text with a font you upload in the reader. |  |
-| [Enable WebView debugging](#enable-webview-debugging) | Lets you inspect Libby's WebViews with chrome://inspect. |  |
-| [Shared web routes](#shared-web-routes) | Internal: installs one /morphe/ request router for extension patches. |  |
-
-</details>
-
+| # | App | Patches | Version | Package |
+|---|---|---|---|---|
+| 1 | [**Libby: Read Library Books**](PATCHES.md#libby-read-library-books-comoverdrivemobileandroidlibby) | 3 | `9.6.0` | [`com.overdrive.mobile.android.libby`](https://play.google.com/store/apps/details?id=com.overdrive.mobile.android.libby) |
 <!-- PATCHES_END -->
 
 The table above is generated from `patches-list.json` at release time. Change

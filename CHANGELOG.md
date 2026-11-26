@@ -1,3 +1,9 @@
+## [1.2.0-dev.2](https://github.com/Tomveloper/libby-patches/compare/v1.2.0-dev.1...v1.2.0-dev.2) (2026-11-26)
+
+### 🚀 Updated App Support
+
+* **Libby:** support 9.6.0 ([8a3461d](https://github.com/Tomveloper/libby-patches/commit/8a3461da9a1584199351c1dddb65ee00765da4e6))
+
 ## [1.2.0-dev.1](https://github.com/Tomveloper/libby-patches/compare/v1.1.0...v1.2.0-dev.1) (2026-11-01)
 
 ### ✨ New Features
