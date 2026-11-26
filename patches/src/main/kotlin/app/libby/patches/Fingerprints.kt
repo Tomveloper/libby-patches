@@ -86,11 +86,11 @@ object AuthWebViewFragmentFingerprint : Fingerprint(
 )
 
 /**
- * The app's base activity result method (currently `zp0.onActivityResult`),
+ * The app's base activity result method (currently `aq0.onActivityResult`),
  * inherited by Activity_Main.
  *
- * It calls the app's activity-result dispatcher (`ob1.i()`), which makes it
- * unique among the four `onActivityResult` overrides in Libby.
+ * It calls the app's activity-result dispatcher (`q33.i()`), which makes it
+ * unique among the `onActivityResult` overrides in Libby.
  */
 object ActivityResultFingerprint : Fingerprint(
     name = "onActivityResult",
@@ -99,7 +99,7 @@ object ActivityResultFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC),
     filters = listOf(
         methodCall(
-            definingClass = "Lob1;",
+            definingClass = "Lq33;",
             name = "i",
         ),
     ),
