@@ -1,10 +1,10 @@
 // Evaluates a JS expression in the live Libby reader WebView.
-// Usage: node dev/cdp-eval.js "expression"
+// Usage: node dev/js/cdp-eval.js "expression"
 // Requires: adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>
 
 const expression = process.argv[2];
 if (!expression) {
-  console.error('usage: node dev/cdp-eval.js "expression"');
+  console.error('usage: node dev/js/cdp-eval.js "expression"');
   process.exit(1);
 }
 

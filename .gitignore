@@ -1,3 +1,7 @@
+### Morphe
+# Private key that signs the patches file
+morphe-signing.key
+
 ### Java template
 # Compiled class file
 *.class
@@ -134,6 +138,9 @@ local.properties
 
 # Generated font UI dev bundle
 dev/dist/
+
+# Local-only tools, input APKs, and signing material
+/dev/tools/
 
 # Captured patch logs
 patch-log*.txt

@@ -218,7 +218,7 @@ public final class FontBridge {
         Context context = view.getContext();
         try {
             prefs(context).edit()
-                    .putInt(KEY_WEIGHT, clampWeight(value))
+                    .putInt(KEY_WEIGHT, normalizeWeight(value))
                     .apply();
         } catch (Throwable t) {
             Log.e(TAG, "setWeight failed", t);
@@ -650,6 +650,7 @@ public final class FontBridge {
     /**
      * JSON consumed by the injected UI and by FontHook:
      * {"selected":"id","enabled":true,"weight":400,"fonts":[...]}
+     * weight 0 means "Default": the app's own weights are left alone.
      */
     public static String libraryStateJson(Context context) {
         try {
@@ -745,7 +746,7 @@ public final class FontBridge {
                 state.put("selected", selectedIsLive ? selected : "");
                 state.put("enabled", selectedIsLive
                         && prefs(context).getBoolean(KEY_ENABLED, false));
-                state.put("weight", clampWeight(prefs(context).getInt(KEY_WEIGHT, 400)));
+                state.put("weight", normalizeWeight(prefs(context).getInt(KEY_WEIGHT, 0)));
                 state.put("fonts", items);
                 return state.toString();
             }
@@ -1177,6 +1178,14 @@ public final class FontBridge {
 
     private static int clampWeight(int weight) {
         return Math.max(1, Math.min(1000, weight));
+    }
+
+    /**
+     * Reading weight uses 0 as "Default": no weight rule is emitted, so the
+     * app's own typography keeps control. Any positive value is a real weight.
+     */
+    private static int normalizeWeight(int weight) {
+        return weight <= 0 ? 0 : clampWeight(weight);
     }
 
     private static int parseFace(String value) {
