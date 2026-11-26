@@ -16,10 +16,10 @@ patches {
     about {
         name = "Libby Patches"
         description = "Morphe patches for the Libby reading app."
-        source = "na"
-        author = "na"
-        contact = "na"
-        website = "na"
+        source = "https://github.com/Tomveloper/libby-patches"
+        author = "Tomveloper"
+        contact = "https://github.com/Tomveloper"
+        website = "https://github.com/Tomveloper/libby-patches"
         license = "GPLv3"
     }
 }
