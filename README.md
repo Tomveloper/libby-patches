@@ -55,6 +55,22 @@ required by the Morphe Gradle plugin (platform 36 / build-tools 36.0.0 as of
 this writing) at `%LOCALAPPDATA%\Android\Sdk`. Local-only binaries live in
 `dev/tools/`.
 
+### Quick shortcuts (Windows)
+
+Double-click a wrapper in `dev/` — no terminal needed:
+
+| File | Action |
+|---|---|
+| `dev/build.cmd` | build the patch bundle |
+| `dev/patch.cmd` | apply the newest bundle to the stock APK |
+| `dev/install.cmd` | `adb install -r` the patched APK |
+| `dev/build_patch_install.cmd` | all three in order |
+
+They call `dev/build-and-install.ps1`, which discovers the newest jar, bundle,
+and APK automatically, and restores the signing key into Morphe's jar-adjacent
+data folder if it is missing. The manual commands below do the same steps one
+at a time.
+
 Versions change with every release. The placeholders below mean:
 
 - `<jar>` — the Morphe desktop jar in `dev/tools/` (e.g.

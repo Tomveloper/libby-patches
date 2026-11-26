@@ -237,6 +237,13 @@ Next steps, in order of preference:
 
 ## 7. Commands
 
+Shortcut: on Windows, double-click `dev/build.cmd`, `dev/patch.cmd`,
+`dev/install.cmd`, or `dev/build_patch_install.cmd` (all three). They call
+`dev/build-and-install.ps1`, which discovers the newest jar/bundle/APK and
+restores `dev/tools/morphe-data/morphe.keystore` from the backup if needed.
+The manual commands below are the authoritative step-by-step reference and
+work on any platform.
+
 ### Build
 
 ```powershell
